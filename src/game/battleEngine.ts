@@ -517,8 +517,10 @@ export class BattleEngine {
       const playerPos = mapConfig.commandStationPositions?.player || { x: 750, y: arenaHeight * 0.5, name: 'Allied Naval Citadel' };
       const enemyPos = mapConfig.commandStationPositions?.enemy || { x: arenaWidth - 750, y: arenaHeight * 0.5, name: 'Hostile Naval Citadel' };
 
-      // Significantly reduced HP (1800 instead of 8500) so destroying it is realistically achievable!
-      const baseStationHp = 1800;
+      // Durable enough to remain the central battle objective without turning
+      // the station into the lengthy damage sponge used by older builds.
+      const baseStationHp = 2100;
+      const defenseHpScale = 1.15;
 
       const playerStation: CommandStationEntity = {
         id: 'cs-player-hq',
@@ -562,8 +564,8 @@ export class BattleEngine {
         x: w.x,
         y: w.y,
         angle: 0,
-        hp: w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360),
-        maxHp: w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360),
+        hp: Math.round((w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360)) * defenseHpScale),
+        maxHp: Math.round((w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360)) * defenseHpScale),
         radius: 26,
         isDestroyed: false,
         cooldown: Math.random() * 1.5,
@@ -586,8 +588,8 @@ export class BattleEngine {
         x: w.x,
         y: w.y,
         angle: Math.PI,
-        hp: w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360),
-        maxHp: w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360),
+        hp: Math.round((w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360)) * defenseHpScale),
+        maxHp: Math.round((w.hp || (w.type === 'missile' ? 420 : w.type === 'cannon' ? 520 : 360)) * defenseHpScale),
         radius: 26,
         isDestroyed: false,
         cooldown: Math.random() * 1.5,
