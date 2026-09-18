@@ -959,11 +959,11 @@ export const ShipyardView: React.FC<ShipyardViewProps> = ({
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-slate-200">Convoy Protection Setup & Team Alignment</h4>
                     <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                      FIXED: 3 PROTECTORS + 3-VEHICLE CONVOY VS 6 ATTACKERS
+                      FIXED: 3 PROTECTORS + 3-VEHICLE CONVOY VS 4 ATTACKERS
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    The Transporting Team fields 3 members and the Attacking Team fields 6, including the player on their selected side. The front Hummer, unique armored semi-truck, and rear Hummer are three additional mission vehicles.
+                    The Transporting Team fields 3 members and the Attacking Team fields 4, including the player on their selected side. The front Hummer, unique armored semi-truck, and rear Hummer are three additional mission vehicles.
                   </p>
                 </div>
 

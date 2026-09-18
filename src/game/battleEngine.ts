@@ -179,7 +179,7 @@ export class BattleEngine {
     const playerFactionTeam: Team = isTransportProtection && playerRole === 'attacker' ? 'enemy' : 'player';
     const opposingFactionTeam: Team = playerFactionTeam === 'player' ? 'enemy' : 'player';
     const transportingCombatCount = 3;
-    const attackingCombatCount = 6;
+    const attackingCombatCount = 4;
     const playerFactionCount = isTransportProtection
       ? (playerFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
       : shipsPerTeam;
@@ -384,7 +384,7 @@ export class BattleEngine {
     ships.push(playerShip);
 
     // Pre-calculate a session-wide domain plan. Mode 3's three fixed convoy
-    // vehicles are created separately from its 3-person escort and 6 attackers.
+    // vehicles are created separately from its 3-person escort and 4 attackers.
     const matchPlan = getBalancedMatchPlan(Math.max(playerFactionCount, opposingFactionCount), playerModel.domain || 'land', this.matchSeed);
     // The first plan excludes the human slot; the second is a full NPC force.
     // Keep those cardinalities even when the human selected the red faction.
@@ -3063,6 +3063,59 @@ export class BattleEngine {
       ? this.state.ships.find(s => s.id === this.state.transportMission?.truckShipId && !s.isSunk)
       : undefined;
 
+    // Mode 2 roles are tactical tendencies, not permanent assignments. Read
+    // the current battle line every update so rear guards become midfield
+    // screens, and screens become attackers, as hostile pressure recedes.
+    let activeStrategicRole = ship.tacticalRole || 'attacker';
+    let homePressureTargets: ShipEntity[] = [];
+    let middlePressureTargets: ShipEntity[] = [];
+    if (enemyCommandStation && friendlyCommandStation) {
+      const axisX = enemyCommandStation.x - friendlyCommandStation.x;
+      const axisY = enemyCommandStation.y - friendlyCommandStation.y;
+      const axisLengthSq = Math.max(1, axisX * axisX + axisY * axisY);
+      const battleLineProgress = (hostile: ShipEntity) =>
+        ((hostile.x - friendlyCommandStation.x) * axisX + (hostile.y - friendlyCommandStation.y) * axisY) / axisLengthSq;
+
+      homePressureTargets = allHostiles.filter(hostile =>
+        battleLineProgress(hostile) <= 0.34
+        || Math.hypot(hostile.x - friendlyCommandStation.x, hostile.y - friendlyCommandStation.y) < 1150
+      );
+      middlePressureTargets = allHostiles.filter(hostile => {
+        const progress = battleLineProgress(hostile);
+        return progress > 0.34 && progress <= 0.72;
+      });
+
+      const livingFriendlies = this.state.ships.filter(candidate =>
+        candidate.team === ship.team && !candidate.isSunk && !candidate.isDocked
+      );
+      const enemyForceIsDepleted = allHostiles.length <= Math.max(1, Math.floor(livingFriendlies.length * 0.35));
+      const ownStationHpRatio = friendlyCommandStation.hp / Math.max(1, friendlyCommandStation.maxHp);
+
+      if (homePressureTargets.length > 0) {
+        if (ship.tacticalRole === 'defender'
+          || (ship.tacticalRole === 'skirmisher' && homePressureTargets.length > 1)
+          || ownStationHpRatio < 0.58) {
+          activeStrategicRole = 'defender';
+        }
+      } else if (middlePressureTargets.length > 0) {
+        // With the home approach secure, former guards advance to contest the
+        // center instead of remaining parked around an empty defensive area.
+        activeStrategicRole = enemyForceIsDepleted
+          ? (ship.tacticalRole === 'skirmisher' ? 'skirmisher' : (canEngageSurface ? 'attacker' : 'skirmisher'))
+          : (ship.tacticalRole === 'defender' ? 'skirmisher' : (ship.tacticalRole || 'attacker'));
+      } else {
+        // Once meaningful pressure has collapsed, every surface-capable unit
+        // contributes to the siege. Pure AA platforms advance as screens.
+        activeStrategicRole = canEngageSurface ? 'attacker' : 'skirmisher';
+      }
+
+      ship.aiState = activeStrategicRole === 'defender'
+        ? 'defend'
+        : activeStrategicRole === 'skirmisher'
+          ? 'chase'
+          : 'attack';
+    }
+
     if (hostiles.length === 0 && !enemyCommandStation && !enemyConvoyTruck) {
       // No targets left, return to gentle center cruise
       if (ship.domain === 'land') {
@@ -3110,10 +3163,10 @@ export class BattleEngine {
       }
 
       if (enemyCommandStation && friendlyCommandStation) {
-        if (ship.tacticalRole === 'defender') {
+        if (activeStrategicRole === 'defender') {
           const threatDistance = Math.hypot(h.x - friendlyCommandStation.x, h.y - friendlyCommandStation.y);
           missionBonus += Math.max(0, 1400 - threatDistance) * 1.25;
-        } else if (ship.tacticalRole === 'skirmisher') {
+        } else if (activeStrategicRole === 'skirmisher') {
           const centerX = (friendlyCommandStation.x + enemyCommandStation.x) * 0.5;
           const centerY = (friendlyCommandStation.y + enemyCommandStation.y) * 0.5;
           const centerDistance = Math.hypot(h.x - centerX, h.y - centerY);
@@ -3140,17 +3193,17 @@ export class BattleEngine {
         : 1;
       const stationThreat = friendlyCommandStation
         ? hostiles
+          .filter(hostile => homePressureTargets.some(threat => threat.id === hostile.id))
           .map(hostile => ({ hostile, distance: Math.hypot(hostile.x - friendlyCommandStation.x, hostile.y - friendlyCommandStation.y) }))
-          .filter(candidate => candidate.distance < (ownHpRatio < 0.6 ? 1450 : 1050))
           .sort((a, b) => Math.hypot(a.hostile.x - ship.x, a.hostile.y - ship.y) - Math.hypot(b.hostile.x - ship.x, b.hostile.y - ship.y))[0]?.hostile
         : undefined;
-      const immediateThreat = tacticalTarget && tacticalTargetDistance < (ship.tacticalRole === 'attacker' ? 300 : 620)
+      const immediateThreat = tacticalTarget && tacticalTargetDistance < (activeStrategicRole === 'attacker' ? 300 : 620)
         ? tacticalTarget
         : undefined;
 
-      if (stationThreat && (ship.tacticalRole === 'defender' || ownHpRatio < 0.6)) {
+      if (stationThreat && (activeStrategicRole === 'defender' || ownHpRatio < 0.6)) {
         target = stationThreat;
-      } else if (ship.tacticalRole === 'defender' && friendlyCommandStation) {
+      } else if (activeStrategicRole === 'defender' && friendlyCommandStation) {
         // Hold a mobile defensive orbit around the home station until a threat
         // enters its approaches.
         target = {
@@ -3158,7 +3211,7 @@ export class BattleEngine {
           y: friendlyCommandStation.y,
           domain: ship.domain,
         } as ShipEntity;
-      } else if (ship.tacticalRole === 'skirmisher' && !immediateThreat) {
+      } else if (activeStrategicRole === 'skirmisher' && !immediateThreat) {
         const midpoint = {
           x: ((friendlyCommandStation?.x ?? ship.x) + enemyCommandStation.x) * 0.5,
           y: ((friendlyCommandStation?.y ?? ship.y) + enemyCommandStation.y) * 0.5,
@@ -3435,7 +3488,7 @@ export class BattleEngine {
     }
 
     // Tactical escort and screening behavior
-    if (ship.tacticalRole === 'defender' && this.state.gameMode !== 'command-station') {
+    if (activeStrategicRole === 'defender' && this.state.gameMode !== 'command-station') {
       const friendlyLead = this.state.ships.find(s => s.team === ship.team && s.id !== ship.id && !s.isSunk);
       if (friendlyLead && Math.hypot(friendlyLead.x - ship.x, friendlyLead.y - ship.y) > 380) {
         navTargetX = (friendlyLead.x + target.x) * 0.5;
