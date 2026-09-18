@@ -63,7 +63,7 @@ const buildMode3Map = (spec: ThemeSpec, mapIndex: number): BattleMapConfig => {
     const t = (x - a.x) / Math.max(1, b.x - a.x);
     return { x, y: Math.round(a.y + (b.y - a.y) * t) };
   };
-  const entry = pointAtX(spec.route[0], spec.route[1], 250);
+  const entry = pointAtX(spec.route[0], spec.route[1], 320);
   const exit = pointAtX(spec.route[spec.route.length - 2], spec.route[spec.route.length - 1], 4660);
   const routeCenters = spec.route.map(({ x, y }) => ({ x, y }));
   const convoyWaypoints = [entry, ...routeCenters.slice(1, -1), exit];

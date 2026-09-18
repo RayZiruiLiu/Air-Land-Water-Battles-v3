@@ -178,7 +178,7 @@ export class BattleEngine {
     // places the player on the red team and at its separate eastern spawn.
     const playerFactionTeam: Team = isTransportProtection && playerRole === 'attacker' ? 'enemy' : 'player';
     const opposingFactionTeam: Team = playerFactionTeam === 'player' ? 'enemy' : 'player';
-    const transportingCombatCount = 8;
+    const transportingCombatCount = 5;
     const attackingCombatCount = 5;
     const playerFactionCount = isTransportProtection
       ? (playerFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
@@ -383,8 +383,8 @@ export class BattleEngine {
     initShipAircraftCapabilities(playerShip);
     ships.push(playerShip);
 
-    // Pre-calculate a session-wide domain plan. Standard modes remain evenly
-    // matched; Mode 3 deliberately consumes different force sizes.
+    // Pre-calculate a session-wide domain plan. Mode 3 uses five combatants on
+    // each side; its three fixed convoy vehicles are created separately below.
     const matchPlan = getBalancedMatchPlan(Math.max(playerFactionCount, opposingFactionCount), playerModel.domain || 'land', this.matchSeed);
     // The first plan excludes the human slot; the second is a full NPC force.
     // Keep those cardinalities even when the human selected the red faction.
@@ -709,7 +709,7 @@ export class BattleEngine {
 
       const hummerModel = SHIP_MODEL_MAP.get('mode3-convoy-gun-hummer') || BASE_SHIPS.find(s => s.domain === 'land') || BASE_SHIPS[0];
       const makeConvoyHummer = (position: 'front' | 'rear'): ShipEntity => {
-        const offset = position === 'front' ? 155 : -155;
+        const offset = position === 'front' ? 205 : -205;
         const config: CustomShipConfig = {
           name: position === 'front' ? 'Convoy Vanguard Hummer' : 'Convoy Rearguard Hummer',
           baseModelId: hummerModel.id,
@@ -720,7 +720,7 @@ export class BattleEngine {
         hummerModel.hardpoints.forEach(hp => {
           if (hp.defaultComponentId) config.equippedComponents[hp.id] = hp.defaultComponentId;
         });
-        const stats = calculateShipStats(hummerModel, config);
+        const stats = { ...calculateShipStats(hummerModel, config), speed: 70 };
         return {
           id: `convoy-${position}-hummer`,
           name: config.name,
@@ -1744,20 +1744,57 @@ export class BattleEngine {
       return nextIndex;
     };
 
+    // Measure spacing along the road polyline instead of using direct distance.
+    // This preserves vehicle order through corners where Euclidean distance can
+    // shrink even though the vehicles are correctly separated along the road.
+    const routeProgress = (vehicle: ShipEntity): number => {
+      let accumulated = 0;
+      let bestProgress = 0;
+      let bestDistance = Infinity;
+      for (let i = 0; i < tm.waypoints.length - 1; i++) {
+        const a = tm.waypoints[i];
+        const b = tm.waypoints[i + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const lengthSq = dx * dx + dy * dy;
+        const length = Math.sqrt(lengthSq);
+        const rawT = lengthSq > 0
+          ? ((vehicle.x - a.x) * dx + (vehicle.y - a.y) * dy) / lengthSq
+          : 0;
+        // The rear guard starts on the authored road extension behind the first
+        // in-bounds waypoint, so preserve negative progress on that first leg.
+        const t = i === 0 ? Math.min(1, rawT) : Math.max(0, Math.min(1, rawT));
+        const projectedX = a.x + dx * t;
+        const projectedY = a.y + dy * t;
+        const distance = Math.hypot(vehicle.x - projectedX, vehicle.y - projectedY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestProgress = accumulated + length * t;
+        }
+        accumulated += length;
+      }
+      return bestProgress;
+    };
+
+    const truckProgress = routeProgress(truck);
+    const frontLead = frontHummer && !frontHummer.isSunk ? routeProgress(frontHummer) - truckProgress : 205;
+    const rearLag = rearHummer && !rearHummer.isSunk ? truckProgress - routeProgress(rearHummer) : 210;
+
     const previousTruckWaypoint = tm.currentWaypointIndex;
-    tm.currentWaypointIndex = followRoad(truck, tm.currentWaypointIndex, 1);
+    const truckSpeed = frontHummer && !frontHummer.isSunk && frontLead < 165 ? 0 : 1;
+    tm.currentWaypointIndex = followRoad(truck, tm.currentWaypointIndex, truckSpeed);
     if (tm.currentWaypointIndex > previousTruckWaypoint) {
       this.addCombatLog(`Convoy transport cleared Checkpoint ${tm.currentWaypointIndex}/${tm.waypoints.length}!`, truck.team);
     }
 
     if (frontHummer && !frontHummer.isSunk) {
-      const frontGap = Math.hypot(frontHummer.x - truck.x, frontHummer.y - truck.y);
-      const frontSpeed = frontGap > 205 ? 0 : frontGap < 120 ? 2 : 1;
+      const frontSpeed = frontLead > 225 ? 0 : frontLead < 185 ? 2 : 1;
       tm.frontWaypointIndex = followRoad(frontHummer, tm.frontWaypointIndex, frontSpeed);
     }
     if (rearHummer && !rearHummer.isSunk) {
-      const rearGap = Math.hypot(rearHummer.x - truck.x, rearHummer.y - truck.y);
-      const rearSpeed = rearGap > 205 ? 2 : rearGap < 115 ? 0 : 1;
+      // A 195px minimum center gap leaves ample clearance behind the new
+      // 190px semi body even while the trailer swings through a turn.
+      const rearSpeed = rearLag > 230 ? 2 : rearLag < 195 ? 0 : 1;
       tm.rearWaypointIndex = followRoad(rearHummer, tm.rearWaypointIndex, rearSpeed);
     }
 
@@ -2265,11 +2302,19 @@ export class BattleEngine {
         ship.articulatedAngle = ship.angle;
       }
       const angleDiff = this.normalizeAngle(ship.angle - ship.articulatedAngle);
-      // When turning or moving, trailer pivots smoothly toward the tractor cab heading
-      const motionFactor = Math.max(0.4, Math.abs(ship.speed) / Math.max(1, ship.stats.speed * 0.45));
       const isConvoySemi = ship.model.spriteStyle.bodyStyle === 'convoy-semi';
-      const followRate = (ship.speed >= 0 ? (isConvoySemi ? 2.9 : 4.8) : (isConvoySemi ? -2.3 : -3.6)) * motionFactor;
-      ship.articulatedAngle += angleDiff * Math.min(1.0, Math.abs(followRate) * dt) * Math.sign(followRate);
+      if (isConvoySemi) {
+        // Real trailer kinematics: the trailer heading changes only as its axle
+        // is pulled through the fifth wheel. It therefore lags the tractor in
+        // turns instead of rotating as part of one rigid vehicle body.
+        const hitchToTrailerAxle = ship.model.hullLength * 0.62;
+        const trailerAngularVelocity = (ship.speed / hitchToTrailerAxle) * Math.sin(angleDiff);
+        ship.articulatedAngle += trailerAngularVelocity * dt;
+      } else {
+        const motionFactor = Math.max(0.4, Math.abs(ship.speed) / Math.max(1, ship.stats.speed * 0.45));
+        const followRate = (ship.speed >= 0 ? 4.8 : -3.6) * motionFactor;
+        ship.articulatedAngle += angleDiff * Math.min(1.0, Math.abs(followRate) * dt) * Math.sign(followRate);
+      }
       ship.articulatedAngle = this.normalizeAngle(ship.articulatedAngle);
 
       // The purpose-built convoy fifth wheel allows a much broader, natural

@@ -91,6 +91,9 @@ export function renderBattle(
   }
   if (clipBoundaryLand) ctx.restore();
 
+  // Mode 3 target marker sits over every terrain layer, but underneath vehicles.
+  drawConvoyTargetIndicator(ctx, state);
+
   // 6. Draw Land Combat Vehicles (Tanks, IFVs, SPAAGs driving over land & bridges)
   const landVehicles = state.ships.filter(s => s.domain === 'land');
   for (const vehicle of landVehicles) {
@@ -1292,7 +1295,7 @@ function drawLandVehicle(
   const chassis = vehicle.model.chassisType || 'tracked';
   const bodyStyle = vehicle.model.spriteStyle.bodyStyle || 'tank';
   const isArticulatedSemi = bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi';
-  const articulationPivotX = bodyStyle === 'convoy-semi' ? halfL * 0.26 : halfL * 0.18;
+  const articulationPivotX = bodyStyle === 'convoy-semi' ? halfL * 0.30 : halfL * 0.18;
 
   // Wrecked / Destroyed vehicle visual
   if (vehicle.isSunk) {
@@ -1314,8 +1317,8 @@ function drawLandVehicle(
     ctx.moveTo(halfL, -halfW * 0.32);
     ctx.lineTo(halfL * 0.88, -halfW * 0.62);
     ctx.lineTo(halfL * 0.38, -halfW * 0.72);
-    ctx.lineTo(halfL * 0.24, -halfW * 0.38);
-    ctx.lineTo(halfL * 0.24, halfW * 0.38);
+    ctx.lineTo(halfL * 0.28, -halfW * 0.38);
+    ctx.lineTo(halfL * 0.28, halfW * 0.38);
     ctx.lineTo(halfL * 0.38, halfW * 0.72);
     ctx.lineTo(halfL * 0.88, halfW * 0.62);
     ctx.lineTo(halfL, halfW * 0.32);
@@ -1328,14 +1331,14 @@ function drawLandVehicle(
     ctx.rotate(relAngle);
     ctx.translate(-pivotX, 0);
     ctx.beginPath();
-    ctx.moveTo(halfL * 0.25, -halfW * 0.22);
-    ctx.lineTo(halfL * 0.12, -halfW * 0.84);
+    ctx.moveTo(halfL * 0.305, -halfW * 0.22);
+    ctx.lineTo(halfL * 0.20, -halfW * 0.84);
     ctx.lineTo(-halfL * 0.96, -halfW * 0.84);
     ctx.lineTo(-halfL, -halfW * 0.58);
     ctx.lineTo(-halfL, halfW * 0.58);
     ctx.lineTo(-halfL * 0.96, halfW * 0.84);
-    ctx.lineTo(halfL * 0.12, halfW * 0.84);
-    ctx.lineTo(halfL * 0.25, halfW * 0.22);
+    ctx.lineTo(halfL * 0.20, halfW * 0.84);
+    ctx.lineTo(halfL * 0.305, halfW * 0.22);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -3088,14 +3091,14 @@ function drawLandVehicleSilhouettePath(
     ctx.moveTo(halfL, -halfW * 0.32);
     ctx.lineTo(halfL * 0.88, -halfW * 0.62);
     ctx.lineTo(halfL * 0.38, -halfW * 0.72);
-    ctx.lineTo(halfL * 0.24, -halfW * 0.38);
-    ctx.lineTo(halfL * 0.12, -halfW * 0.84);
+    ctx.lineTo(halfL * 0.28, -halfW * 0.38);
+    ctx.lineTo(halfL * 0.20, -halfW * 0.84);
     ctx.lineTo(-halfL * 0.96, -halfW * 0.84);
     ctx.lineTo(-halfL, -halfW * 0.58);
     ctx.lineTo(-halfL, halfW * 0.58);
     ctx.lineTo(-halfL * 0.96, halfW * 0.84);
-    ctx.lineTo(halfL * 0.12, halfW * 0.84);
-    ctx.lineTo(halfL * 0.24, halfW * 0.38);
+    ctx.lineTo(halfL * 0.20, halfW * 0.84);
+    ctx.lineTo(halfL * 0.28, halfW * 0.38);
     ctx.lineTo(halfL * 0.38, halfW * 0.72);
     ctx.lineTo(halfL * 0.88, halfW * 0.62);
     ctx.lineTo(halfL, halfW * 0.32);
@@ -3703,8 +3706,8 @@ function drawVehicleBody(
     ctx.lineTo(halfL * 0.68, -halfW * 0.62);
     ctx.lineTo(halfL * 0.58, -halfW * 0.76);
     ctx.lineTo(halfL * 0.34, -halfW * 0.76);
-    ctx.lineTo(halfL * 0.24, -halfW * 0.4);
-    ctx.lineTo(halfL * 0.24, halfW * 0.4);
+    ctx.lineTo(halfL * 0.28, -halfW * 0.4);
+    ctx.lineTo(halfL * 0.28, halfW * 0.4);
     ctx.lineTo(halfL * 0.34, halfW * 0.76);
     ctx.lineTo(halfL * 0.58, halfW * 0.76);
     ctx.lineTo(halfL * 0.68, halfW * 0.62);
@@ -3764,7 +3767,7 @@ function drawVehicleBody(
       ctx.fillRect(wx - 7, halfW * 0.88 - 7, 14, 7);
     });
 
-    const pivotX = halfL * 0.26;
+    const pivotX = halfL * 0.30;
     const relAngle = vehicle && vehicle.articulatedAngle !== undefined
       ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
       : 0;
@@ -3778,8 +3781,8 @@ function drawVehicleBody(
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(halfL * 0.3, 0);
-    ctx.lineTo(halfL * 0.12, 0);
+    ctx.moveTo(halfL * 0.34, 0);
+    ctx.lineTo(halfL * 0.20, 0);
     ctx.stroke();
 
     ctx.save();
@@ -3790,14 +3793,14 @@ function drawVehicleBody(
     // Significantly extended armored trailer with a tapered gooseneck and
     // beveled tail, designed specifically around mission cargo.
     ctx.beginPath();
-    ctx.moveTo(halfL * 0.25, -halfW * 0.2);
-    ctx.lineTo(halfL * 0.12, -halfW * 0.78);
+    ctx.moveTo(halfL * 0.305, -halfW * 0.2);
+    ctx.lineTo(halfL * 0.20, -halfW * 0.78);
     ctx.lineTo(-halfL * 0.9, -halfW * 0.82);
     ctx.lineTo(-halfL * 0.99, -halfW * 0.55);
     ctx.lineTo(-halfL * 0.99, halfW * 0.55);
     ctx.lineTo(-halfL * 0.9, halfW * 0.82);
-    ctx.lineTo(halfL * 0.12, halfW * 0.78);
-    ctx.lineTo(halfL * 0.25, halfW * 0.2);
+    ctx.lineTo(halfL * 0.20, halfW * 0.78);
+    ctx.lineTo(halfL * 0.305, halfW * 0.2);
     ctx.closePath();
     ctx.fillStyle = hullColor;
     ctx.fill();
@@ -3808,7 +3811,7 @@ function drawVehicleBody(
     // Raised sealed cargo spine and asymmetric service panels.
     ctx.fillStyle = deckColor;
     ctx.beginPath();
-    ctx.roundRect(-halfL * 0.88, -halfW * 0.62, halfL * 0.94, halfW * 1.24, 5);
+    ctx.roundRect(-halfL * 0.88, -halfW * 0.62, halfL * 1.12, halfW * 1.24, 5);
     ctx.fill();
     ctx.strokeStyle = accentColor;
     ctx.stroke();
@@ -5260,28 +5263,6 @@ export function drawMissionObjectives(ctx: CanvasRenderingContext2D, state: Batt
       ctx.restore();
     }
 
-    // Transparent pulsing yellow mission-target indicator
-    const truck = state.ships.find(s => s.id === tm.truckShipId && !s.isSunk);
-    if (truck) {
-      ctx.save();
-      ctx.translate(truck.x, truck.y);
-      const ringRadius = Math.max(72, truck.model.hullLength * 0.48) + Math.sin(time * 3.6) * 7;
-      ctx.beginPath();
-      ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(250, 204, 21, 0.035)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.62)';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([11, 8]);
-      ctx.lineDashOffset = -time * 18;
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(253, 224, 71, 0.88)';
-      ctx.font = 'bold 10px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('VIP CARGO RIG', 0, -ringRadius - 6);
-      ctx.restore();
-    }
   }
 
   // MODE 4: Amphibious Beachhead Landing Zone
@@ -5307,5 +5288,32 @@ export function drawMissionObjectives(ctx: CanvasRenderingContext2D, state: Batt
     ctx.fillText(am.isCarrierBeached ? 'BEACHHEAD SECURED (DEPLOYING)' : 'LANDING ZONE BEACHHEAD', 0, -lz.radius - 12);
     ctx.restore();
   }
+}
+
+function drawConvoyTargetIndicator(ctx: CanvasRenderingContext2D, state: BattleState) {
+  const mission = state.transportMission;
+  if (!mission) return;
+
+  const truck = state.ships.find(ship => ship.id === mission.truckShipId && !ship.isSunk);
+  if (!truck) return;
+
+  ctx.save();
+  ctx.translate(truck.x, truck.y);
+  const ringRadius = Math.max(72, truck.model.hullLength * 0.48) + Math.sin(state.time * 3.6) * 7;
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(250, 204, 21, 0.035)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.62)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([11, 8]);
+  ctx.lineDashOffset = -state.time * 18;
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(253, 224, 71, 0.88)';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('VIP CARGO RIG', 0, -ringRadius - 6);
+  ctx.restore();
 }
 
