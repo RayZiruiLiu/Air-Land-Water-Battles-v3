@@ -366,6 +366,7 @@ export interface ShipEntity {
   isConvoyTruck?: boolean;
   convoyEscortPosition?: 'front' | 'rear';
   convoyColorPattern?: 'woodland' | 'olivedrab' | 'black' | 'desert' | 'navy';
+  convoyCatchUpWaypointIndex?: number;
 }
 
 export function isFighterCarrier(model: BaseShipModel): boolean {

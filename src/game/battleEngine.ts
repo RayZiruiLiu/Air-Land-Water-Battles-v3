@@ -431,6 +431,11 @@ export class BattleEngine {
         assignedDomain
       );
       const stats = calculateShipStats(model, config);
+      if (isTransportProtection && playerFactionTeam === 'player') {
+        // The mission convoy was deliberately accelerated; transporting NPCs
+        // need enough reserve speed to recover formation after combat or turns.
+        stats.speed = Math.max(stats.speed, 112);
+      }
 
       // Check NPC weapon capabilities
       let npcHasSurface = false;
@@ -505,6 +510,9 @@ export class BattleEngine {
         assignedDomain
       );
       const stats = calculateShipStats(model, config);
+      if (isTransportProtection && opposingFactionTeam === 'player') {
+        stats.speed = Math.max(stats.speed, 112);
+      }
 
       let npcHasSurface = false;
       let npcHasAir = false;
@@ -3087,6 +3095,9 @@ export class BattleEngine {
     const enemyConvoyTruck = this.state.gameMode === 'transport-protection' && ship.team === 'enemy' && canEngageSurface
       ? this.state.ships.find(s => s.id === this.state.transportMission?.truckShipId && !s.isSunk)
       : undefined;
+    const friendlyConvoyTruck = this.state.gameMode === 'transport-protection' && ship.team === 'player'
+      ? this.state.ships.find(s => s.id === this.state.transportMission?.truckShipId && !s.isSunk)
+      : undefined;
 
     // Mode 2 roles are tactical tendencies, not permanent assignments. Read
     // the current battle line every update so rear guards become midfield
@@ -3141,7 +3152,7 @@ export class BattleEngine {
           : 'attack';
     }
 
-    if (hostiles.length === 0 && !enemyCommandStation && !enemyConvoyTruck) {
+    if (hostiles.length === 0 && !enemyCommandStation && !enemyConvoyTruck && !friendlyConvoyTruck) {
       // No targets left, return to gentle center cruise
       if (ship.domain === 'land') {
         const myIsland = this.landPathfinder.findLandLocation(ship.x, ship.y).island || this.state.islands[0];
@@ -3274,20 +3285,120 @@ export class BattleEngine {
           hostile,
           shipDistance: Math.hypot(hostile.x - ship.x, hostile.y - ship.y),
           truckDistance: Math.hypot(hostile.x - enemyConvoyTruck.x, hostile.y - enemyConvoyTruck.y),
+          threateningAttacker: hostile.aiTargetId === ship.id,
+          threateningTruck: hostile.aiTargetId === enemyConvoyTruck.id,
         }))
-        .filter(candidate => candidate.shipDistance < 760 || candidate.truckDistance < 720)
-        .sort((a, b) => (a.shipDistance + a.truckDistance * 0.4) - (b.shipDistance + b.truckDistance * 0.4))[0]?.hostile;
-      const shouldScreen = ship.tacticalRole === 'skirmisher' && truckHpRatio > 0.3 && escortInterception;
-      const shouldSelfDefend = tacticalTarget && tacticalTarget.id !== enemyConvoyTruck.id && tacticalTargetDistance < 240;
-      target = shouldScreen ? escortInterception : shouldSelfDefend ? tacticalTarget : enemyConvoyTruck;
+        .filter(candidate => candidate.shipDistance < 700 && (
+          candidate.shipDistance < 400
+          || candidate.truckDistance < 680
+          || candidate.threateningAttacker
+          || candidate.threateningTruck
+        ))
+        .sort((a, b) => {
+          const aThreatBonus = (a.threateningAttacker ? 420 : 0) + (a.threateningTruck ? 220 : 0);
+          const bThreatBonus = (b.threateningAttacker ? 420 : 0) + (b.threateningTruck ? 220 : 0);
+          return (a.shipDistance + a.truckDistance * 0.3 - aThreatBonus)
+            - (b.shipDistance + b.truckDistance * 0.3 - bThreatBonus);
+        })[0];
+      const shouldEngageEscort = !!escortInterception && truckHpRatio > 0.12 && (
+        ship.tacticalRole === 'skirmisher'
+        || escortInterception.threateningAttacker
+        || escortInterception.threateningTruck
+        || escortInterception.shipDistance < 320
+        || (escortInterception.truckDistance < 520 && escortInterception.shipDistance < 600)
+      );
+      target = shouldEngageEscort ? escortInterception.hostile : enemyConvoyTruck;
       minDist = Math.hypot(target.x - ship.x, target.y - ship.y);
       ship.aiTargetId = target.id;
       ship.weaponTargetMode = target.domain === 'air' ? 'air' : 'surface';
     } else if (target) {
       ship.aiTargetId = target.id;
       ship.weaponTargetMode = target.domain === 'air' ? 'air' : 'surface';
+    } else if (friendlyConvoyTruck) {
+      // Unarmed or domain-specialized escorts still need a navigation objective
+      // even when none of the current attackers are valid weapon targets.
+      target = friendlyConvoyTruck;
+      minDist = Math.hypot(target.x - ship.x, target.y - ship.y);
     } else {
       return;
+    }
+
+    // Mode 3 transporting NPCs use the moving semi as their formation anchor.
+    // Nearby attackers can pull an escort into a short tactical engagement, but
+    // an escort that falls well behind always breaks contact and catches up.
+    let movementTarget: Pick<ShipEntity, 'x' | 'y' | 'domain'> = target;
+    let convoyCatchUp = false;
+    if (friendlyConvoyTruck) {
+      const convoyDistance = Math.hypot(friendlyConvoyTruck.x - ship.x, friendlyConvoyTruck.y - ship.y);
+      const combatTargetIsHostile = target.team !== ship.team;
+      const combatTargetDistance = combatTargetIsHostile
+        ? Math.hypot(target.x - ship.x, target.y - ship.y)
+        : Infinity;
+      const targetDistanceFromConvoy = combatTargetIsHostile
+        ? Math.hypot(target.x - friendlyConvoyTruck.x, target.y - friendlyConvoyTruck.y)
+        : Infinity;
+      const immediateTacticalReason = combatTargetIsHostile
+        && combatTargetDistance < 540
+        && (targetDistanceFromConvoy < 850 || target.aiTargetId === ship.id);
+      convoyCatchUp = convoyDistance > 1050 || (convoyDistance > 620 && !immediateTacticalReason);
+
+      if (convoyCatchUp || !immediateTacticalReason) {
+        const idSeed = Array.from(ship.id).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const side = idSeed % 2 === 0 ? 1 : -1;
+        const trailingDistance = ship.domain === 'air' ? 80 : 170;
+        // Land escorts aim at the road directly behind the semi; a lateral
+        // offset can place their catch-up point in water on narrow causeways.
+        const lateralDistance = ship.domain === 'water' ? 520 : ship.domain === 'air' ? 260 : 0;
+        const headingX = Math.cos(friendlyConvoyTruck.angle);
+        const headingY = Math.sin(friendlyConvoyTruck.angle);
+        movementTarget = {
+          x: Math.max(100, Math.min(
+            this.state.arenaWidth - 100,
+            friendlyConvoyTruck.x - headingX * trailingDistance - headingY * side * lateralDistance
+          )),
+          y: Math.max(100, Math.min(
+            this.state.arenaHeight - 100,
+            friendlyConvoyTruck.y - headingY * trailingDistance + headingX * side * lateralDistance
+          )),
+          domain: ship.domain,
+        };
+        if (ship.domain === 'land' && convoyCatchUp && this.state.transportMission) {
+          // When far behind, rejoin through the authored connected road rather
+          // than trying to cut across water toward the semi's current island.
+          // Once caught up, ordinary land pathfinding is free to use branches.
+          const route = this.state.transportMission.waypoints;
+          let closestSegment = 0;
+          let closestRouteDistance = Infinity;
+          for (let i = 0; i < route.length - 1; i++) {
+            const routeDistance = distancePointToSegment(
+              ship.x,
+              ship.y,
+              route[i].x,
+              route[i].y,
+              route[i + 1].x,
+              route[i + 1].y
+            ).dist;
+            if (routeDistance < closestRouteDistance) {
+              closestRouteDistance = routeDistance;
+              closestSegment = i;
+            }
+          }
+          if (ship.convoyCatchUpWaypointIndex === undefined) {
+            ship.convoyCatchUpWaypointIndex = Math.min(route.length - 1, closestSegment + 1);
+          }
+          let catchUpWaypoint = route[ship.convoyCatchUpWaypointIndex];
+          if (catchUpWaypoint
+            && Math.hypot(catchUpWaypoint.x - ship.x, catchUpWaypoint.y - ship.y) < 140
+            && ship.convoyCatchUpWaypointIndex < route.length - 1) {
+            ship.convoyCatchUpWaypointIndex++;
+            catchUpWaypoint = route[ship.convoyCatchUpWaypointIndex];
+          }
+          if (catchUpWaypoint) {
+            movementTarget = { ...catchUpWaypoint, domain: 'land' };
+          }
+        }
+        ship.aiState = convoyCatchUp ? 'chase' : 'defend';
+      }
     }
 
     // =========================================================================
@@ -3314,8 +3425,8 @@ export class BattleEngine {
     // =========================================================================
     // 1. TACTICAL DESTINATION & BYPASS ROUTING
     // =========================================================================
-    let navTargetX = target.x;
-    let navTargetY = target.y;
+    let navTargetX = movementTarget.x;
+    let navTargetY = movementTarget.y;
 
     if (ship.domain === 'water') {
       // Step A: Find closest island coastline and clearance
@@ -3347,8 +3458,8 @@ export class BattleEngine {
         const tang2Y = -closestCoastNormX;
 
         // Choose the tangent that progresses toward the target
-        const toTgtX = target.x - ship.x;
-        const toTgtY = target.y - ship.y;
+        const toTgtX = movementTarget.x - ship.x;
+        const toTgtY = movementTarget.y - ship.y;
         const dot1 = tang1X * toTgtX + tang1Y * toTgtY;
         const dot2 = tang2X * toTgtX + tang2Y * toTgtY;
         const bestTangX = dot1 >= dot2 ? tang1X : tang2X;
@@ -3387,7 +3498,7 @@ export class BattleEngine {
             // Check if direct line-of-sight to target has cleared of all islands
             let blocked = false;
             for (const island of this.state.islands) {
-              if (checkSegmentPolygonIntersection(ship.x, ship.y, target.x, target.y, island.points)) {
+              if (checkSegmentPolygonIntersection(ship.x, ship.y, movementTarget.x, movementTarget.y, island.points)) {
                 blocked = true;
                 break;
               }
@@ -3408,9 +3519,9 @@ export class BattleEngine {
           let minBlockingDist = Infinity;
 
           for (const island of this.state.islands) {
-            const segHit = checkSegmentPolygonIntersection(ship.x, ship.y, target.x, target.y, island.points);
+            const segHit = checkSegmentPolygonIntersection(ship.x, ship.y, movementTarget.x, movementTarget.y, island.points);
             const dShip = Math.hypot(island.x - ship.x, island.y - ship.y);
-            if (segHit || isPointInPolygon(target.x, target.y, island.points)) {
+            if (segHit || isPointInPolygon(movementTarget.x, movementTarget.y, island.points)) {
               if (dShip < minBlockingDist) {
                 minBlockingDist = dShip;
                 blockingIsland = island;
@@ -3419,8 +3530,8 @@ export class BattleEngine {
           }
 
           if (blockingIsland) {
-            const dirX = target.x - ship.x;
-            const dirY = target.y - ship.y;
+            const dirX = movementTarget.x - ship.x;
+            const dirY = movementTarget.y - ship.y;
             const len = Math.hypot(dirX, dirY) || 1;
             const perpX = -dirY / len;
             const perpY = dirX / len;
@@ -3462,8 +3573,8 @@ export class BattleEngine {
             p2x = Math.max(arenaPad, Math.min(this.state.arenaWidth - arenaPad, p2x));
             p2y = Math.max(arenaPad, Math.min(this.state.arenaHeight - arenaPad, p2y));
 
-            const d1 = Math.hypot(ship.x - p1x, ship.y - p1y) + Math.hypot(target.x - p1x, target.y - p1y);
-            const d2 = Math.hypot(ship.x - p2x, ship.y - p2y) + Math.hypot(target.x - p2x, target.y - p2y);
+            const d1 = Math.hypot(ship.x - p1x, ship.y - p1y) + Math.hypot(movementTarget.x - p1x, movementTarget.y - p1y);
+            const d2 = Math.hypot(ship.x - p2x, ship.y - p2y) + Math.hypot(movementTarget.x - p2x, movementTarget.y - p2y);
 
             const islandId = blockingIsland.id || `${blockingIsland.x}_${blockingIsland.y}`;
             let score1 = d1;
@@ -3484,7 +3595,7 @@ export class BattleEngine {
         }
       }
     } else if (ship.domain === 'land') {
-      const plan = this.landPathfinder.planLandMovement(ship, target);
+      const plan = this.landPathfinder.planLandMovement(ship, movementTarget as ShipEntity);
 
       if (plan.needsReverse) {
         // Vehicle is facing a shoreline, corner, or dead-end with no forward clearance:
@@ -3513,7 +3624,9 @@ export class BattleEngine {
     }
 
     // Tactical escort and screening behavior
-    if (activeStrategicRole === 'defender' && this.state.gameMode !== 'command-station') {
+    if (activeStrategicRole === 'defender'
+      && this.state.gameMode !== 'command-station'
+      && this.state.gameMode !== 'transport-protection') {
       const friendlyLead = this.state.ships.find(s => s.team === ship.team && s.id !== ship.id && !s.isSunk);
       if (friendlyLead && Math.hypot(friendlyLead.x - ship.x, friendlyLead.y - ship.y) > 380) {
         navTargetX = (friendlyLead.x + target.x) * 0.5;
@@ -3571,6 +3684,15 @@ export class BattleEngine {
       ship.evasionTurnDir = undefined;
       goalAngle = directAngle;
       ship.targetSpeedLevel = 2; // Full speed on approach
+    }
+
+    if (convoyCatchUp) {
+      // Catch-up movement takes priority over range-keeping maneuvers so an
+      // escort cannot keep circling a fight that the convoy has already left.
+      ship.combatManeuver = 'approach';
+      ship.preferredBroadside = undefined;
+      goalAngle = directAngle;
+      ship.targetSpeedLevel = 2;
     }
 
     // Aircraft / Helicopter Speed Control (Full, Half, Stop / Hover):
@@ -3723,13 +3845,13 @@ export class BattleEngine {
         this.executeNpcGunnery(ship, target, minDist, dt);
       } else {
         const immediateThreat = tacticalTarget && tacticalTarget.id !== enemyConvoyTruck.id
-          && tacticalTargetDistance <= Math.min(230, maxRange * 0.45)
+          && tacticalTargetDistance <= Math.min(360, maxRange * 0.7)
           ? tacticalTarget
           : enemyConvoyTruck;
         const fireDistance = immediateThreat.id === enemyConvoyTruck.id ? minDist : tacticalTargetDistance;
         this.executeNpcGunnery(ship, immediateThreat, fireDistance, dt);
       }
-    } else {
+    } else if (target.team !== ship.team) {
       this.executeNpcGunnery(ship, target, minDist, dt);
     }
   }
