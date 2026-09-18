@@ -363,6 +363,13 @@ export interface ShipEntity {
   isOnboardCarrier?: boolean;
   carrierId?: string;
   onboardCarrierSlot?: number;
+  isDeployingFromCarrier?: boolean;
+  carrierDeploymentStartX?: number;
+  carrierDeploymentStartY?: number;
+  carrierDeploymentTargetX?: number;
+  carrierDeploymentTargetY?: number;
+  carrierDeploymentProgress?: number;
+  carrierDeploymentDuration?: number;
 
   // Mode 3 VIP Convoy Truck properties
   isConvoyTruck?: boolean;
@@ -618,6 +625,8 @@ export interface TransportMissionState {
 export interface AmphibiousMissionState {
   carrierShipId: string;
   landingZone: { x: number; y: number; radius: number };
+  ferryDeploymentPoint: { x: number; y: number };
+  shoreApproachAngle: number;
   commandCenter: CommandStationEntity;
   isCarrierBeached: boolean;
   isCarrierDestroyed: boolean;

@@ -973,14 +973,14 @@ export class BattleEngine {
         hullClass: 'RO-RO',
         combatRole: 'support-tow',
         description: `Mission-exclusive roll-on/roll-off landing ferry in ${ferryPalette.name} livery, with an enclosed vehicle deck and reinforced bow ramp.`,
-        hullLength: 440,
-        hullWidth: 158,
+        hullLength: 380,
+        hullWidth: 122,
         baseHp: 11000,
         baseSpeed: 24,
         baseTurnRate: 0.42,
         baseArmor: 58,
         hardpoints: [],
-        svgHullPath: 'M 220,-54 L 188,-76 L -202,-76 L -220,-58 L -220,58 L -202,76 L 188,76 L 220,54 Z',
+        svgHullPath: 'M 190,-42 L 162,-59 L -174,-59 L -190,-45 L -190,45 L -174,59 L 162,59 L 190,42 Z',
         spriteStyle: {
           bodyStyle: 'vehicle-ferry',
           hullColor: ferryPalette.hull,
@@ -997,32 +997,53 @@ export class BattleEngine {
         authoredLandingZone.y - carrierSpawn.y,
         authoredLandingZone.x - carrierSpawn.x
       );
-      const approachDistance = Math.hypot(
-        authoredLandingZone.x - carrierSpawn.x,
-        authoredLandingZone.y - carrierSpawn.y
+      const approachDistance = Math.max(
+        Math.hypot(authoredLandingZone.x - carrierSpawn.x, authoredLandingZone.y - carrierSpawn.y),
+        Math.hypot(fortressPos.x - carrierSpawn.x, fortressPos.y - carrierSpawn.y)
       );
       const approachX = Math.cos(approachAngle);
       const approachY = Math.sin(approachAngle);
-      let lastSafeDeploymentPoint = { x: carrierSpawn.x, y: carrierSpawn.y };
-      for (let travel = 0; travel <= approachDistance; travel += 10) {
+      let lastWaterCenter = { x: carrierSpawn.x, y: carrierSpawn.y };
+      let firstLandCenter = { x: authoredLandingZone.x, y: authoredLandingZone.y };
+      for (let travel = 0; travel <= approachDistance; travel += 4) {
         const sampleX = carrierSpawn.x + approachX * travel;
         const sampleY = carrierSpawn.y + approachY * travel;
-        const intersectsLand = mapConfig.obstacles.some(island => checkShipPolygonCollision(
-          sampleX,
-          sampleY,
-          approachAngle,
-          carrierModel.hullLength,
-          carrierModel.hullWidth,
-          island.points,
-          island.canals
-        ).collided);
-        if (intersectsLand) break;
-        lastSafeDeploymentPoint = { x: sampleX, y: sampleY };
+        const centerOnLand = mapConfig.obstacles.some(island => isPointInPolygon(sampleX, sampleY, island.points));
+        if (centerOnLand) {
+          firstLandCenter = { x: sampleX, y: sampleY };
+          break;
+        }
+        lastWaterCenter = { x: sampleX, y: sampleY };
       }
-      const shorelineSafetyMargin = 24;
+      // Refine the exact water/land transition so the visible circle is split
+      // by the shoreline instead of floating entirely on either side.
+      for (let iteration = 0; iteration < 12; iteration++) {
+        const midpoint = {
+          x: (lastWaterCenter.x + firstLandCenter.x) * 0.5,
+          y: (lastWaterCenter.y + firstLandCenter.y) * 0.5,
+        };
+        const midpointOnLand = mapConfig.obstacles.some(island => isPointInPolygon(midpoint.x, midpoint.y, island.points));
+        if (midpointOnLand) firstLandCenter = midpoint;
+        else lastWaterCenter = midpoint;
+      }
+      const shorelinePoint = {
+        x: (lastWaterCenter.x + firstLandCenter.x) * 0.5,
+        y: (lastWaterCenter.y + firstLandCenter.y) * 0.5,
+      };
+      const shorelineEdge = mapConfig.obstacles
+        .map(island => ({ island, edge: getPointPolygonDistance(shorelinePoint.x, shorelinePoint.y, island.points) }))
+        .sort((a, b) => Math.abs(a.edge.distance) - Math.abs(b.edge.distance))[0];
+      const outwardX = shorelineEdge?.edge.normalX ?? -approachX;
+      const outwardY = shorelineEdge?.edge.normalY ?? -approachY;
+      const shoreApproachAngle = Math.atan2(-outwardY, -outwardX);
+      const bowOffset = carrierModel.hullLength * 0.48;
+      const ferryDeploymentPoint = {
+        x: shorelinePoint.x + outwardX * (bowOffset + 1),
+        y: shorelinePoint.y + outwardY * (bowOffset + 1),
+      };
       const landingZone = {
-        x: lastSafeDeploymentPoint.x - approachX * shorelineSafetyMargin,
-        y: lastSafeDeploymentPoint.y - approachY * shorelineSafetyMargin,
+        x: shorelinePoint.x,
+        y: shorelinePoint.y,
         radius: Math.min(140, authoredLandingZone.radius),
       };
       const carrierConfig: CustomShipConfig = {
@@ -1093,6 +1114,8 @@ export class BattleEngine {
       amphibiousMission = {
         carrierShipId: carrierShip.id,
         landingZone,
+        ferryDeploymentPoint,
+        shoreApproachAngle,
         commandCenter: coastalFortress,
         isCarrierBeached: false,
         isCarrierDestroyed: false,
@@ -2214,13 +2237,17 @@ export class BattleEngine {
     am.carrierMaxHp = carrier.maxHp;
 
     if (!am.isCarrierBeached) {
-      const distToLz = Math.hypot(am.landingZone.x - carrier.x, am.landingZone.y - carrier.y);
-      const deploymentTriggerDistance = Math.max(42, am.landingZone.radius * 0.55);
-      if (distToLz <= deploymentTriggerDistance) {
+      const distToDock = Math.hypot(
+        am.ferryDeploymentPoint.x - carrier.x,
+        am.ferryDeploymentPoint.y - carrier.y
+      );
+      if (distToDock <= 9) {
         am.isCarrierBeached = true;
         am.isDeploying = am.maxDeployUnits > 0;
         carrier.speed = 0;
         carrier.targetSpeedLevel = 0;
+        carrier.angle = am.shoreApproachAngle;
+        carrier.targetRudderAngle = 0;
         this.addCombatLog(
           am.maxDeployUnits > 0
             ? 'Vehicle ferry reached the deployment shore! Lowering the bow ramp for embarked land vehicles.'
@@ -2229,17 +2256,32 @@ export class BattleEngine {
         );
         sounds.playWaterSplash();
       } else {
-        const targetAngle = Math.atan2(am.landingZone.y - carrier.y, am.landingZone.x - carrier.x);
+        const targetAngle = Math.atan2(
+          am.ferryDeploymentPoint.y - carrier.y,
+          am.ferryDeploymentPoint.x - carrier.x
+        );
         const angleDiff = this.normalizeAngle(targetAngle - carrier.angle);
         carrier.targetRudderAngle = Math.max(-1, Math.min(1, angleDiff * 2.0));
         carrier.targetSpeedLevel = 1;
       }
     } else if (am.isDeploying && am.deployedUnitsCount < am.maxDeployUnits) {
+      // Hold the ferry firmly against the shore throughout the entire ramp sequence.
+      carrier.speed = 0;
+      carrier.targetSpeedLevel = 0;
+      carrier.vx = 0;
+      carrier.vy = 0;
+      carrier.targetRudderAngle = 0;
+
+      const activeDeployment = this.state.ships.some(ship =>
+        ship.carrierId === carrier.id && ship.isDeployingFromCarrier && !ship.isSunk
+      );
+      if (activeDeployment) return;
+
       am.deployTimer += dt;
-      if (am.deployTimer >= 4.5) {
+      if (am.deployTimer >= 1.15) {
         am.deployTimer = 0;
         const deployingUnit = this.state.ships
-          .filter(ship => ship.carrierId === carrier.id && ship.isOnboardCarrier && !ship.isSunk)
+          .filter(ship => ship.carrierId === carrier.id && ship.isOnboardCarrier && !ship.isSunk && !ship.isDeployingFromCarrier)
           .sort((a, b) => (a.onboardCarrierSlot || 0) - (b.onboardCarrierSlot || 0))[0];
         if (!deployingUnit) {
           am.isDeploying = false;
@@ -2247,55 +2289,48 @@ export class BattleEngine {
         }
 
         const deploymentNumber = am.deployedUnitsCount;
-        const spawnDistance = carrier.model.hullLength * 0.52 + 42;
-        const lateralOffset = (deploymentNumber % 2 === 0 ? -1 : 1) * (42 + Math.floor(deploymentNumber / 2) * 24);
-        let spawnX = carrier.x + Math.cos(carrier.angle) * spawnDistance - Math.sin(carrier.angle) * lateralOffset;
-        let spawnY = carrier.y + Math.sin(carrier.angle) * spawnDistance + Math.cos(carrier.angle) * lateralOffset;
+        const approachX = Math.cos(am.shoreApproachAngle);
+        const approachY = Math.sin(am.shoreApproachAngle);
+        const lateralOffset = (deploymentNumber % 2 === 0 ? -1 : 1) * 34;
+        const pairDepth = Math.floor(deploymentNumber / 2) * 66;
+        let targetX = am.landingZone.x
+          + approachX * (deployingUnit.model.hullLength * 0.55 + 72 + pairDepth)
+          - approachY * lateralOffset;
+        let targetY = am.landingZone.y
+          + approachY * (deployingUnit.model.hullLength * 0.55 + 72 + pairDepth)
+          + approachX * lateralOffset;
         const landPolygons = [
           ...this.state.islands.map(island => island.points),
           ...(this.state.bridges || []).map(bridge => bridge.points),
         ];
-        let clearance = getLandClearance(spawnX, spawnY, landPolygons);
+        let clearance = getLandClearance(targetX, targetY, landPolygons);
         const requiredClearance = Math.max(deployingUnit.model.hullWidth, 36) * 0.65 + 18;
         if (!clearance.onLand || clearance.distanceToWater < requiredClearance) {
-          spawnX = clearance.closestX + clearance.inwardNx * requiredClearance;
-          spawnY = clearance.closestY + clearance.inwardNy * requiredClearance;
+          targetX = clearance.closestX + clearance.inwardNx * requiredClearance;
+          targetY = clearance.closestY + clearance.inwardNy * requiredClearance;
           // Organic coastlines can have shallow concavities. Recheck the
           // candidate and walk it farther inland until the whole vehicle has
           // usable land clearance rather than merely touching the shoreline.
           for (let attempt = 0; attempt < 6; attempt++) {
-            clearance = getLandClearance(spawnX, spawnY, landPolygons);
+            clearance = getLandClearance(targetX, targetY, landPolygons);
             if (clearance.onLand && clearance.distanceToWater >= requiredClearance) break;
-            spawnX += clearance.inwardNx * 24;
-            spawnY += clearance.inwardNy * 24;
+            targetX += clearance.inwardNx * 24;
+            targetY += clearance.inwardNy * 24;
           }
         }
 
-        deployingUnit.x = spawnX;
-        deployingUnit.y = spawnY;
-        deployingUnit.angle = carrier.angle;
-        deployingUnit.vx = 0;
-        deployingUnit.vy = 0;
-        deployingUnit.speed = 0;
-        deployingUnit.targetSpeedLevel = deployingUnit.isPlayer ? 0 : 2;
-        deployingUnit.rudderAngle = 0;
-        deployingUnit.targetRudderAngle = 0;
-        deployingUnit.isOnboardCarrier = false;
-        deployingUnit.carrierId = undefined;
-        deployingUnit.onboardCarrierSlot = undefined;
-        if (deployingUnit.towedTrailer) {
-          const towDistance = deployingUnit.model.hullLength * 0.48
-            + 22
-            + deployingUnit.towedTrailer.def.length * 0.48;
-          deployingUnit.towedTrailer.x = spawnX - Math.cos(deployingUnit.angle) * towDistance;
-          deployingUnit.towedTrailer.y = spawnY - Math.sin(deployingUnit.angle) * towDistance;
-          deployingUnit.towedTrailer.angle = deployingUnit.angle;
-        }
-
-        am.deployedUnitsCount++;
-        if (am.deployedUnitsCount >= am.maxDeployUnits) am.isDeploying = false;
+        const travelDistance = Math.hypot(targetX - deployingUnit.x, targetY - deployingUnit.y);
+        const rampTravelSpeed = Math.max(38, Math.min(92, deployingUnit.stats.speed * 0.72));
+        deployingUnit.isDeployingFromCarrier = true;
+        deployingUnit.carrierDeploymentStartX = deployingUnit.x;
+        deployingUnit.carrierDeploymentStartY = deployingUnit.y;
+        deployingUnit.carrierDeploymentTargetX = targetX;
+        deployingUnit.carrierDeploymentTargetY = targetY;
+        deployingUnit.carrierDeploymentProgress = 0;
+        deployingUnit.carrierDeploymentDuration = Math.max(2.8, travelDistance / rampTravelSpeed);
+        deployingUnit.angle = am.shoreApproachAngle;
         this.addCombatLog(
-          `Beachhead: ${deployingUnit.name} deployed from the vehicle ferry and is advancing inland.`,
+          `Beachhead: ${deployingUnit.name} is driving down the ferry ramp toward the shore.`,
           carrier.team
         );
       }
@@ -2509,8 +2544,70 @@ export class BattleEngine {
       return;
     }
 
-    // Mode 4 attacking land vehicles are cargo until the carrier reaches the
-    // beach. Lock them to deck slots and prevent independent physics/control.
+    // Mode 4 ramp transit deliberately bypasses normal land/water collision:
+    // the vehicle visibly drives from its deck slot, over the bow ramp, across
+    // the waterline, and onto a prevalidated inland point as one continuous move.
+    if (ship.isDeployingFromCarrier && ship.carrierId) {
+      const carrier = this.state.ships.find(candidate => candidate.id === ship.carrierId);
+      if (!carrier || carrier.isSunk) {
+        this.sinkShip(ship, carrier?.id);
+        return;
+      }
+      const startX = ship.carrierDeploymentStartX ?? ship.x;
+      const startY = ship.carrierDeploymentStartY ?? ship.y;
+      const targetX = ship.carrierDeploymentTargetX ?? ship.x;
+      const targetY = ship.carrierDeploymentTargetY ?? ship.y;
+      const duration = Math.max(0.1, ship.carrierDeploymentDuration ?? 3);
+      const progress = Math.min(1, (ship.carrierDeploymentProgress ?? 0) + dt / duration);
+      const easedProgress = progress * progress * (3 - 2 * progress);
+      ship.carrierDeploymentProgress = progress;
+      ship.x = startX + (targetX - startX) * easedProgress;
+      ship.y = startY + (targetY - startY) * easedProgress;
+      ship.angle = this.state.amphibiousMission?.shoreApproachAngle ?? carrier.angle;
+      ship.speed = Math.hypot(targetX - startX, targetY - startY) / duration;
+      ship.targetSpeedLevel = 0;
+      ship.vx = Math.cos(ship.angle) * ship.speed;
+      ship.vy = Math.sin(ship.angle) * ship.speed;
+      ship.rudderAngle = 0;
+      ship.targetRudderAngle = 0;
+      if (ship.towedTrailer) {
+        const towDistance = ship.model.hullLength * 0.48 + 22 + ship.towedTrailer.def.length * 0.48;
+        ship.towedTrailer.x = ship.x - Math.cos(ship.angle) * towDistance;
+        ship.towedTrailer.y = ship.y - Math.sin(ship.angle) * towDistance;
+        ship.towedTrailer.angle = ship.angle;
+      }
+      if (progress >= 1) {
+        ship.x = targetX;
+        ship.y = targetY;
+        ship.speed = 0;
+        ship.vx = 0;
+        ship.vy = 0;
+        ship.isDeployingFromCarrier = false;
+        ship.isOnboardCarrier = false;
+        ship.carrierId = undefined;
+        ship.onboardCarrierSlot = undefined;
+        ship.carrierDeploymentStartX = undefined;
+        ship.carrierDeploymentStartY = undefined;
+        ship.carrierDeploymentTargetX = undefined;
+        ship.carrierDeploymentTargetY = undefined;
+        ship.carrierDeploymentProgress = undefined;
+        ship.carrierDeploymentDuration = undefined;
+        ship.targetSpeedLevel = ship.isPlayer ? 0 : 2;
+        const mission = this.state.amphibiousMission;
+        if (mission) {
+          mission.deployedUnitsCount++;
+          if (mission.deployedUnitsCount >= mission.maxDeployUnits) mission.isDeploying = false;
+        }
+        this.addCombatLog(
+          `Beachhead: ${ship.name} cleared the ferry ramp and is advancing inland.`,
+          ship.team
+        );
+      }
+      return;
+    }
+
+    // Mode 4 attacking land vehicles are cargo until the ferry reaches the
+    // beach. Lock them to two deck lanes and prevent independent physics/control.
     if (ship.isOnboardCarrier && ship.carrierId) {
       const carrier = this.state.ships.find(candidate => candidate.id === ship.carrierId);
       if (!carrier || carrier.isSunk) {
@@ -2914,7 +3011,16 @@ export class BattleEngine {
         }
       }
     } else if (ship.domain === 'water') {
-      for (const island of this.state.islands) {
+      const amphibiousMission = this.state.amphibiousMission;
+      const isFinalFerryLandingApproach = amphibiousMission?.carrierShipId === ship.id
+        && Math.hypot(
+          nextX - amphibiousMission.ferryDeploymentPoint.x,
+          nextY - amphibiousMission.ferryDeploymentPoint.y
+        ) <= Math.max(280, ship.model.hullLength * 0.8);
+      // During the final beaching run the ferry's bow is intentionally allowed
+      // to meet the shoreline. Normal ship collision remains active everywhere
+      // else and for every other watercraft.
+      for (const island of isFinalFerryLandingApproach ? [] : this.state.islands) {
         const col = checkShipPolygonCollision(
           nextX,
           nextY,
