@@ -98,9 +98,18 @@ export function renderBattle(
 
   // 6. Draw Land Combat Vehicles (Tanks, IFVs, SPAAGs driving over land & bridges)
   const landVehicles = state.ships.filter(s => s.domain === 'land');
+  // The Mode 3 route continues beyond the authored map so the lead escort can clear
+  // the extraction zone. Clip vehicles at the playable boundary as they drive out.
+  if (state.gameMode === 'transport-protection') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, state.arenaWidth, state.arenaHeight);
+    ctx.clip();
+  }
   for (const vehicle of landVehicles) {
     drawLandVehicle(ctx, vehicle, state.time);
   }
+  if (state.gameMode === 'transport-protection') ctx.restore();
 
   // 6.5 Draw Command Stations & Fortresses (Modes 2 & 4)
   if (state.commandStations) {

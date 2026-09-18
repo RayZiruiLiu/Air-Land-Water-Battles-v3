@@ -178,7 +178,7 @@ export class BattleEngine {
     // places the player on the red team and at its separate eastern spawn.
     const playerFactionTeam: Team = isTransportProtection && playerRole === 'attacker' ? 'enemy' : 'player';
     const opposingFactionTeam: Team = playerFactionTeam === 'player' ? 'enemy' : 'player';
-    const transportingCombatCount = 3;
+    const transportingCombatCount = 2;
     const attackingCombatCount = 4;
     const playerFactionCount = isTransportProtection
       ? (playerFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
@@ -384,7 +384,7 @@ export class BattleEngine {
     ships.push(playerShip);
 
     // Pre-calculate a session-wide domain plan. Mode 3's three fixed convoy
-    // vehicles are created separately from its 3-person escort and 4 attackers.
+    // vehicles are created separately from its 2-person escort and 4 attackers.
     const matchPlan = getBalancedMatchPlan(Math.max(playerFactionCount, opposingFactionCount), playerModel.domain || 'land', this.matchSeed);
     // The first plan excludes the human slot; the second is a full NPC force.
     // Keep those cardinalities even when the human selected the red faction.
@@ -726,7 +726,7 @@ export class BattleEngine {
         stats: {
           ...truckStats,
           maxHp: 4800,
-          speed: 68,
+          speed: 124,
           armorRating: 42,
         },
         cooldowns: {},
@@ -759,7 +759,7 @@ export class BattleEngine {
         hummerModel.hardpoints.forEach(hp => {
           if (hp.defaultComponentId) config.equippedComponents[hp.id] = hp.defaultComponentId;
         });
-        const stats = { ...calculateShipStats(hummerModel, config), speed: 70 };
+        const stats = { ...calculateShipStats(hummerModel, config), speed: 128 };
         return {
           id: `convoy-${position}-hummer`,
           name: config.name,
@@ -1762,16 +1762,33 @@ export class BattleEngine {
     const frontHummer = this.state.ships.find(s => s.id === tm.frontHummerShipId);
     const rearHummer = this.state.ships.find(s => s.id === tm.rearHummerShipId);
 
+    // Extend the authored road heading beyond the extraction point. The
+    // vanguard follows this invisible continuation and clears the circle/map
+    // edge instead of stopping at the semi-truck's extraction position.
+    const routeEnd = tm.waypoints[tm.waypoints.length - 1] || tm.destination;
+    const routeBeforeEnd = tm.waypoints[tm.waypoints.length - 2] || routeEnd;
+    const exitDx = routeEnd.x - routeBeforeEnd.x;
+    const exitDy = routeEnd.y - routeBeforeEnd.y;
+    const exitLength = Math.hypot(exitDx, exitDy) || 1;
+    const exitClearanceDistance = 900;
+    const navigationWaypoints = [
+      ...tm.waypoints,
+      {
+        x: routeEnd.x + (exitDx / exitLength) * exitClearanceDistance,
+        y: routeEnd.y + (exitDy / exitLength) * exitClearanceDistance,
+      },
+    ];
+
     // Fixed convoy units use the authored road centerline directly. They never
     // invoke tactical land pathfinding, so they cannot choose branches, circle
     // an island, or wander away from the mission route.
     const followRoad = (vehicle: ShipEntity, index: number, speedLevel: number): number => {
-      let nextIndex = Math.min(index, tm.waypoints.length - 1);
-      let waypoint = tm.waypoints[nextIndex] || tm.destination;
+      let nextIndex = Math.min(index, navigationWaypoints.length - 1);
+      let waypoint = navigationWaypoints[nextIndex] || tm.destination;
       let distance = Math.hypot(waypoint.x - vehicle.x, waypoint.y - vehicle.y);
-      if (distance < 90 && nextIndex < tm.waypoints.length - 1) {
+      if (distance < 90 && nextIndex < navigationWaypoints.length - 1) {
         nextIndex++;
-        waypoint = tm.waypoints[nextIndex];
+        waypoint = navigationWaypoints[nextIndex];
         distance = Math.hypot(waypoint.x - vehicle.x, waypoint.y - vehicle.y);
       }
       const desiredHeading = Math.atan2(waypoint.y - vehicle.y, waypoint.x - vehicle.x);
@@ -1790,9 +1807,9 @@ export class BattleEngine {
       let accumulated = 0;
       let bestProgress = 0;
       let bestDistance = Infinity;
-      for (let i = 0; i < tm.waypoints.length - 1; i++) {
-        const a = tm.waypoints[i];
-        const b = tm.waypoints[i + 1];
+      for (let i = 0; i < navigationWaypoints.length - 1; i++) {
+        const a = navigationWaypoints[i];
+        const b = navigationWaypoints[i + 1];
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const lengthSq = dx * dx + dy * dy;
@@ -1848,9 +1865,6 @@ export class BattleEngine {
       if (nearest) this.executeNpcGunnery(escort, nearest.ship, nearest.distance, dt);
     }
 
-    const currentWp = tm.waypoints[tm.currentWaypointIndex] || tm.destination;
-    const distToWp = Math.hypot(currentWp.x - truck.x, currentWp.y - truck.y);
-
     // Check distance to destination extraction zone
     const distToDest = Math.hypot(tm.destination.x - truck.x, tm.destination.y - truck.y);
     tm.distanceRemaining = Math.round(distToDest);
@@ -1860,7 +1874,9 @@ export class BattleEngine {
     const pct = Math.min(99, Math.round((tm.currentWaypointIndex / totalWps) * 100));
     tm.progressPercent = pct;
 
-    if (distToDest <= tm.destination.radius || (tm.currentWaypointIndex >= tm.waypoints.length - 1 && distToWp < 120)) {
+    // Extraction is awarded only when the semi-truck itself enters the green
+    // destination circle; escort position and waypoint state cannot trigger it.
+    if (distToDest <= tm.destination.radius) {
       tm.reachedDestination = true;
       tm.progressPercent = 100;
     }
@@ -2623,55 +2639,64 @@ export class BattleEngine {
     // Boundary bounce & inward deflection logic
     // Prevents ships from scraping along or getting stuck on edge
     if (!hitIsland) {
-      const padding = 85;
-      let bounced = false;
-
-      if (nextX < padding) {
-        ship.x = padding;
-        ship.vx = Math.abs(ship.vx);
-        if (Math.cos(ship.angle) < 0) {
-          // If heading into left wall, turn inward towards center
-          ship.angle = Math.atan2(Math.sin(ship.angle), 0.5);
-          ship.rudderAngle = 0;
-        }
-        bounced = true;
-      } else if (nextX > this.state.arenaWidth - padding) {
-        ship.x = this.state.arenaWidth - padding;
-        ship.vx = -Math.abs(ship.vx);
-        if (Math.cos(ship.angle) > 0) {
-          // If heading into right wall, turn inward towards center
-          ship.angle = Math.atan2(Math.sin(ship.angle), -0.5);
-          ship.rudderAngle = 0;
-        }
-        bounced = true;
-      } else {
+      const isFixedConvoyVehicle = this.state.gameMode === 'transport-protection'
+        && (ship.isConvoyTruck || !!ship.convoyEscortPosition);
+      if (isFixedConvoyVehicle) {
+        // The authored convoy road intentionally continues beyond the chart.
+        // Allow mission vehicles to be clipped naturally as they drive out.
         ship.x = nextX;
-      }
-
-      if (nextY < padding) {
-        ship.y = padding;
-        ship.vy = Math.abs(ship.vy);
-        if (Math.sin(ship.angle) < 0) {
-          // If heading into top wall, turn downward towards center
-          ship.angle = Math.atan2(0.5, Math.cos(ship.angle));
-          ship.rudderAngle = 0;
-        }
-        bounced = true;
-      } else if (nextY > this.state.arenaHeight - padding) {
-        ship.y = this.state.arenaHeight - padding;
-        ship.vy = -Math.abs(ship.vy);
-        if (Math.sin(ship.angle) > 0) {
-          // If heading into bottom wall, turn upward towards center
-          ship.angle = Math.atan2(-0.5, Math.cos(ship.angle));
-          ship.rudderAngle = 0;
-        }
-        bounced = true;
-      } else {
         ship.y = nextY;
-      }
+      } else {
+        const padding = 85;
+        let bounced = false;
 
-      if (bounced) {
-        ship.speed = Math.max(30, Math.abs(ship.speed) * 0.7);
+        if (nextX < padding) {
+          ship.x = padding;
+          ship.vx = Math.abs(ship.vx);
+          if (Math.cos(ship.angle) < 0) {
+            // If heading into left wall, turn inward towards center
+            ship.angle = Math.atan2(Math.sin(ship.angle), 0.5);
+            ship.rudderAngle = 0;
+          }
+          bounced = true;
+        } else if (nextX > this.state.arenaWidth - padding) {
+          ship.x = this.state.arenaWidth - padding;
+          ship.vx = -Math.abs(ship.vx);
+          if (Math.cos(ship.angle) > 0) {
+            // If heading into right wall, turn inward towards center
+            ship.angle = Math.atan2(Math.sin(ship.angle), -0.5);
+            ship.rudderAngle = 0;
+          }
+          bounced = true;
+        } else {
+          ship.x = nextX;
+        }
+
+        if (nextY < padding) {
+          ship.y = padding;
+          ship.vy = Math.abs(ship.vy);
+          if (Math.sin(ship.angle) < 0) {
+            // If heading into top wall, turn downward towards center
+            ship.angle = Math.atan2(0.5, Math.cos(ship.angle));
+            ship.rudderAngle = 0;
+          }
+          bounced = true;
+        } else if (nextY > this.state.arenaHeight - padding) {
+          ship.y = this.state.arenaHeight - padding;
+          ship.vy = -Math.abs(ship.vy);
+          if (Math.sin(ship.angle) > 0) {
+            // If heading into bottom wall, turn upward towards center
+            ship.angle = Math.atan2(-0.5, Math.cos(ship.angle));
+            ship.rudderAngle = 0;
+          }
+          bounced = true;
+        } else {
+          ship.y = nextY;
+        }
+
+        if (bounced) {
+          ship.speed = Math.max(30, Math.abs(ship.speed) * 0.7);
+        }
       }
     }
 

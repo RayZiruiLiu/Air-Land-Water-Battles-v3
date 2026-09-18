@@ -1619,7 +1619,7 @@ function renderMinimap(canvas: HTMLCanvasElement, state: BattleState) {
       ctx.lineTo(tx, ty);
       ctx.stroke();
 
-      ctx.fillStyle = ship.isPlayer ? '#f59e0b' : ship.team === 'player' ? '#cbd5e1' : '#fca5a5';
+      ctx.fillStyle = ship.team === 'player' ? '#a7f3d0' : '#fda4af';
       ctx.fillRect(tx - 1.5, ty - 1.5, 3, 3);
     }
 
@@ -1628,7 +1628,9 @@ function renderMinimap(canvas: HTMLCanvasElement, state: BattleState) {
     ctx.rotate(ship.angle);
 
     if (ship.isPlayer) {
-      ctx.fillStyle = '#10b981';
+      // Preserve the larger player marker, but color it by the player's actual
+      // faction (red when joining Mode 3's Attacking Team).
+      ctx.fillStyle = ship.team === 'player' ? '#10b981' : '#f43f5e';
       ctx.beginPath();
       ctx.arc(0, 0, 4, 0, Math.PI * 2);
       ctx.fill();
