@@ -1875,10 +1875,10 @@ function drawNavalHull(
 
   // Deck Inlay & Details tailored to each naval hull configuration
   if (bodyStyle === 'vehicle-ferry') {
-    // Enclosed Ro-Ro vehicle deck with raised coamings and a broad loading lane.
+    // Enclosed Ro-Ro deck sized for exactly two adjacent vehicle lanes.
     ctx.fillStyle = deckColor;
     ctx.beginPath();
-    ctx.roundRect(-halfL * 0.88, -halfW * 0.72, halfL * 1.62, halfW * 1.44, 8);
+    ctx.roundRect(-halfL * 0.88, -halfW * 0.82, halfL * 1.62, halfW * 1.64, 8);
     ctx.fill();
     ctx.strokeStyle = '#303633';
     ctx.lineWidth = 2.5;
@@ -1886,28 +1886,26 @@ function drawNavalHull(
 
     // Heavy side casings and regularly spaced ventilation / access bays.
     ctx.fillStyle = '#3f4747';
-    ctx.fillRect(-halfL * 0.84, -halfW * 0.76, halfL * 1.48, halfW * 0.19);
-    ctx.fillRect(-halfL * 0.84, halfW * 0.57, halfL * 1.48, halfW * 0.19);
+    ctx.fillRect(-halfL * 0.84, -halfW * 0.88, halfL * 1.48, halfW * 0.11);
+    ctx.fillRect(-halfL * 0.84, halfW * 0.77, halfL * 1.48, halfW * 0.11);
     ctx.strokeStyle = '#262b2b';
     ctx.lineWidth = 1;
     for (let x = -halfL * 0.72; x <= halfL * 0.55; x += Math.max(24, halfL * 0.18)) {
       ctx.beginPath();
-      ctx.moveTo(x, -halfW * 0.76);
-      ctx.lineTo(x, -halfW * 0.57);
-      ctx.moveTo(x, halfW * 0.57);
-      ctx.lineTo(x, halfW * 0.76);
+      ctx.moveTo(x, -halfW * 0.88);
+      ctx.lineTo(x, -halfW * 0.77);
+      ctx.moveTo(x, halfW * 0.77);
+      ctx.lineTo(x, halfW * 0.88);
       ctx.stroke();
     }
 
-    // Twin road lanes make the transport purpose unmistakable without runway markings.
+    // A single center divider creates two parking lanes without an empty middle lane.
     ctx.strokeStyle = 'rgba(229, 220, 190, 0.72)';
     ctx.lineWidth = 2;
     ctx.setLineDash([14, 12]);
     ctx.beginPath();
-    ctx.moveTo(-halfL * 0.78, -halfW * 0.24);
-    ctx.lineTo(halfL * 0.80, -halfW * 0.24);
-    ctx.moveTo(-halfL * 0.78, halfW * 0.24);
-    ctx.lineTo(halfL * 0.80, halfW * 0.24);
+    ctx.moveTo(-halfL * 0.78, 0);
+    ctx.lineTo(halfL * 0.80, 0);
     ctx.stroke();
     ctx.setLineDash([]);
 

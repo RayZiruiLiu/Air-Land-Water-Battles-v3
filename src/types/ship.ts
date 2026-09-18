@@ -363,6 +363,8 @@ export interface ShipEntity {
   isOnboardCarrier?: boolean;
   carrierId?: string;
   onboardCarrierSlot?: number;
+  onboardCarrierLongitudinalOffset?: number;
+  onboardCarrierLateralOffset?: number;
   isDeployingFromCarrier?: boolean;
   carrierDeploymentStartX?: number;
   carrierDeploymentStartY?: number;

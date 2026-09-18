@@ -979,7 +979,18 @@ export class BattleEngine {
         baseSpeed: 24,
         baseTurnRate: 0.42,
         baseArmor: 58,
-        hardpoints: [],
+        hardpoints: [
+          {
+            id: 'hp-ferry-light-ciws',
+            name: 'Bridge-Roof 20mm Defensive CIWS',
+            x: 0.48,
+            y: 0,
+            allowedArc: 'all',
+            defaultComponentId: 'naval-phalanx-ciws',
+            allowedCategories: ['special-weapon'],
+            slotDescription: 'Single light defensive mount above the ferry wheelhouse.',
+          },
+        ],
         svgHullPath: 'M 190,-42 L 162,-59 L -174,-59 L -190,-45 L -190,45 L -174,59 L 162,59 L 190,42 Z',
         spriteStyle: {
           bodyStyle: 'vehicle-ferry',
@@ -1051,7 +1062,9 @@ export class BattleEngine {
         baseModelId: carrierModel.id,
         primaryColor: ferryPalette.hull,
         accentColor: ferryPalette.accent,
-        equippedComponents: {},
+        equippedComponents: {
+          'hp-ferry-light-ciws': 'naval-phalanx-ciws',
+        },
       };
       const carrierStats = calculateShipStats(carrierModel, carrierConfig);
 
@@ -1090,24 +1103,67 @@ export class BattleEngine {
         domain: 'water',
         altitude: 0,
         weaponTargetMode: 'surface',
-        hasSurfaceWeapons: false,
-        hasAirWeapons: false,
+        hasSurfaceWeapons: true,
+        hasAirWeapons: true,
       };
       ships.push(carrierShip);
 
       const onboardLandUnits = ships.filter(ship => ship.team === attackerTeam && ship.domain === 'land');
+      const parkingFootprint = (unit: ShipEntity) => ({
+        rear: unit.towedTrailer
+          ? unit.model.hullLength * 0.48 + 22 + unit.towedTrailer.def.length * 0.98
+          : unit.model.hullLength * 0.5,
+        front: unit.model.hullLength * 0.5,
+        width: Math.max(unit.model.hullWidth, unit.towedTrailer?.def.width || 0),
+      });
+      const parkingLanes: ShipEntity[][] = [[], []];
+      const laneLoads = [0, 0];
+      [...onboardLandUnits]
+        .sort((a, b) => {
+          const aSize = parkingFootprint(a);
+          const bSize = parkingFootprint(b);
+          return (bSize.rear + bSize.front) - (aSize.rear + aSize.front);
+        })
+        .forEach(unit => {
+          const laneIndex = laneLoads[0] <= laneLoads[1] ? 0 : 1;
+          parkingLanes[laneIndex].push(unit);
+          const footprint = parkingFootprint(unit);
+          laneLoads[laneIndex] += footprint.rear + footprint.front;
+        });
+
+      const deckRearLimit = -carrierModel.hullLength * 0.43;
+      const deckFrontLimit = carrierModel.hullLength * 0.35;
+      const laneVehicleGap = 8;
+      const parkingOffsets = new Map<string, { x: number; y: number }>();
+      parkingLanes.forEach((laneUnits, laneIndex) => {
+        const occupiedLength = laneUnits.reduce((total, unit) => {
+          const footprint = parkingFootprint(unit);
+          return total + footprint.rear + footprint.front;
+        }, 0) + Math.max(0, laneUnits.length - 1) * laneVehicleGap;
+        let cursor = deckRearLimit + Math.max(0, (deckFrontLimit - deckRearLimit - occupiedLength) * 0.5);
+        const laneDirection = laneIndex === 0 ? -1 : 1;
+        for (const unit of laneUnits) {
+          const footprint = parkingFootprint(unit);
+          const localX = cursor + footprint.rear;
+          const localY = laneDirection * (footprint.width * 0.5 + 2);
+          parkingOffsets.set(unit.id, { x: localX, y: localY });
+          cursor = localX + footprint.front + laneVehicleGap;
+        }
+      });
+
       onboardLandUnits.forEach((unit, slot) => {
         unit.isOnboardCarrier = true;
         unit.carrierId = carrierShip.id;
         unit.onboardCarrierSlot = slot;
         unit.targetSpeedLevel = 0;
         unit.speed = 0;
-        const column = Math.floor(slot / 2);
-        const row = slot % 2 === 0 ? -1 : 1;
-        const localX = -carrierModel.hullLength * 0.22 + column * 82;
-        const localY = row * carrierModel.hullWidth * 0.22;
-        unit.x = carrierShip.x + Math.cos(carrierShip.angle) * localX - Math.sin(carrierShip.angle) * localY;
-        unit.y = carrierShip.y + Math.sin(carrierShip.angle) * localX + Math.cos(carrierShip.angle) * localY;
+        const parking = parkingOffsets.get(unit.id) || { x: 0, y: 0 };
+        const localX = parking.x;
+        const parkingY = parking.y;
+        unit.onboardCarrierLongitudinalOffset = localX;
+        unit.onboardCarrierLateralOffset = parkingY;
+        unit.x = carrierShip.x + Math.cos(carrierShip.angle) * localX - Math.sin(carrierShip.angle) * parkingY;
+        unit.y = carrierShip.y + Math.sin(carrierShip.angle) * localX + Math.cos(carrierShip.angle) * parkingY;
         unit.angle = carrierShip.angle;
       });
 
@@ -2586,6 +2642,8 @@ export class BattleEngine {
         ship.isOnboardCarrier = false;
         ship.carrierId = undefined;
         ship.onboardCarrierSlot = undefined;
+        ship.onboardCarrierLongitudinalOffset = undefined;
+        ship.onboardCarrierLateralOffset = undefined;
         ship.carrierDeploymentStartX = undefined;
         ship.carrierDeploymentStartY = undefined;
         ship.carrierDeploymentTargetX = undefined;
@@ -2617,8 +2675,10 @@ export class BattleEngine {
       const slot = ship.onboardCarrierSlot || 0;
       const column = Math.floor(slot / 2);
       const row = slot % 2 === 0 ? -1 : 1;
-      const localX = -carrier.model.hullLength * 0.22 + column * 82;
-      const localY = row * carrier.model.hullWidth * 0.22;
+      const localX = ship.onboardCarrierLongitudinalOffset
+        ?? (-carrier.model.hullLength * 0.22 + column * 82);
+      const localY = ship.onboardCarrierLateralOffset
+        ?? row * (ship.model.hullWidth * 0.5 + 2);
       ship.x = carrier.x + Math.cos(carrier.angle) * localX - Math.sin(carrier.angle) * localY;
       ship.y = carrier.y + Math.sin(carrier.angle) * localX + Math.cos(carrier.angle) * localY;
       ship.angle = carrier.angle;
