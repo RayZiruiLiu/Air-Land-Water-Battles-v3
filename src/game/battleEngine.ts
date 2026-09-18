@@ -52,6 +52,35 @@ function distancePointToSegment(px: number, py: number, x1: number, y1: number, 
   return { dist: Math.hypot(px - projX, py - projY), projX, projY };
 }
 
+const MODE_4_FERRY_PALETTES = [
+  { name: 'NATO Gray', hull: '#596168', deck: '#77786f', accent: '#d1c7a7', details: '#2f3437' },
+  { name: 'Baltic Workboat', hull: '#46545a', deck: '#6d746f', accent: '#b7aa88', details: '#293136' },
+  { name: 'Olive Drab', hull: '#4b5144', deck: '#6b6d5c', accent: '#c0b38e', details: '#292d27' },
+  { name: 'Coastal Tan', hull: '#625c50', deck: '#807967', accent: '#d3c49d', details: '#36322b' },
+];
+let mode4FerryPaletteBag: number[] = [];
+let lastMode4FerryPaletteIndex = -1;
+
+function takeMode4FerryPalette() {
+  if (mode4FerryPaletteBag.length === 0) {
+    mode4FerryPaletteBag = MODE_4_FERRY_PALETTES.map((_, index) => index);
+    for (let i = mode4FerryPaletteBag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [mode4FerryPaletteBag[i], mode4FerryPaletteBag[j]] = [mode4FerryPaletteBag[j], mode4FerryPaletteBag[i]];
+    }
+    // A newly shuffled cycle must not repeat the immediately previous game.
+    if (mode4FerryPaletteBag[mode4FerryPaletteBag.length - 1] === lastMode4FerryPaletteIndex) {
+      const swapIndex = mode4FerryPaletteBag.findIndex(index => index !== lastMode4FerryPaletteIndex);
+      const lastIndex = mode4FerryPaletteBag.length - 1;
+      [mode4FerryPaletteBag[swapIndex], mode4FerryPaletteBag[lastIndex]] =
+        [mode4FerryPaletteBag[lastIndex], mode4FerryPaletteBag[swapIndex]];
+    }
+  }
+  const paletteIndex = mode4FerryPaletteBag.pop()!;
+  lastMode4FerryPaletteIndex = paletteIndex;
+  return MODE_4_FERRY_PALETTES[paletteIndex];
+}
+
 function initVehicleTrailer(vehicle: ShipEntity): TrailerEntity | undefined {
   // Trailers are strictly restricted to land vehicles only
   if (vehicle.domain !== 'land' || vehicle.model.domain !== 'land') {
@@ -872,7 +901,7 @@ export class BattleEngine {
       const attackerTeam: Team = playerRole === 'attacker' ? 'player' : 'enemy';
       const defenderTeam: Team = attackerTeam === 'player' ? 'enemy' : 'player';
 
-      const landingZone = mapConfig.amphibiousConfig?.landingZone || {
+      const authoredLandingZone = mapConfig.amphibiousConfig?.landingZone || {
         x: arenaWidth * 0.58,
         y: arenaHeight * 0.5,
         radius: 240,
@@ -933,13 +962,7 @@ export class BattleEngine {
         angle: 0,
       };
 
-      const ferryPalettes = [
-        { name: 'NATO Gray', hull: '#596168', deck: '#77786f', accent: '#d1c7a7', details: '#2f3437' },
-        { name: 'Baltic Workboat', hull: '#46545a', deck: '#6d746f', accent: '#b7aa88', details: '#293136' },
-        { name: 'Olive Drab', hull: '#4b5144', deck: '#6b6d5c', accent: '#c0b38e', details: '#292d27' },
-        { name: 'Coastal Tan', hull: '#625c50', deck: '#807967', accent: '#d3c49d', details: '#36322b' },
-      ];
-      const ferryPalette = ferryPalettes[Math.floor(Math.random() * ferryPalettes.length)];
+      const ferryPalette = takeMode4FerryPalette();
       // Mission-exclusive Ro-Ro vehicle ferry, authored from scratch rather
       // than inheriting any selectable warship or aircraft-carrier model.
       const carrierModel: BaseShipModel = {
@@ -950,14 +973,14 @@ export class BattleEngine {
         hullClass: 'RO-RO',
         combatRole: 'support-tow',
         description: `Mission-exclusive roll-on/roll-off landing ferry in ${ferryPalette.name} livery, with an enclosed vehicle deck and reinforced bow ramp.`,
-        hullLength: 520,
-        hullWidth: 184,
+        hullLength: 440,
+        hullWidth: 158,
         baseHp: 11000,
         baseSpeed: 24,
         baseTurnRate: 0.42,
         baseArmor: 58,
         hardpoints: [],
-        svgHullPath: 'M 260,-62 L 220,-88 L -236,-88 L -260,-68 L -260,68 L -236,88 L 220,88 L 260,62 Z',
+        svgHullPath: 'M 220,-54 L 188,-76 L -202,-76 L -220,-58 L -220,58 L -202,76 L 188,76 L 220,54 Z',
         spriteStyle: {
           bodyStyle: 'vehicle-ferry',
           hullColor: ferryPalette.hull,
@@ -965,6 +988,42 @@ export class BattleEngine {
           accentColor: ferryPalette.accent,
           details: ferryPalette.details,
         },
+      };
+
+      // Convert the authored inland beach marker into a hull-safe water-side
+      // deployment point. Sampling the actual map polygons makes this robust
+      // across every organic shoreline instead of assuming a fixed coast X.
+      const approachAngle = Math.atan2(
+        authoredLandingZone.y - carrierSpawn.y,
+        authoredLandingZone.x - carrierSpawn.x
+      );
+      const approachDistance = Math.hypot(
+        authoredLandingZone.x - carrierSpawn.x,
+        authoredLandingZone.y - carrierSpawn.y
+      );
+      const approachX = Math.cos(approachAngle);
+      const approachY = Math.sin(approachAngle);
+      let lastSafeDeploymentPoint = { x: carrierSpawn.x, y: carrierSpawn.y };
+      for (let travel = 0; travel <= approachDistance; travel += 10) {
+        const sampleX = carrierSpawn.x + approachX * travel;
+        const sampleY = carrierSpawn.y + approachY * travel;
+        const intersectsLand = mapConfig.obstacles.some(island => checkShipPolygonCollision(
+          sampleX,
+          sampleY,
+          approachAngle,
+          carrierModel.hullLength,
+          carrierModel.hullWidth,
+          island.points,
+          island.canals
+        ).collided);
+        if (intersectsLand) break;
+        lastSafeDeploymentPoint = { x: sampleX, y: sampleY };
+      }
+      const shorelineSafetyMargin = 24;
+      const landingZone = {
+        x: lastSafeDeploymentPoint.x - approachX * shorelineSafetyMargin,
+        y: lastSafeDeploymentPoint.y - approachY * shorelineSafetyMargin,
+        radius: Math.min(140, authoredLandingZone.radius),
       };
       const carrierConfig: CustomShipConfig = {
         name: attackerTeam === 'player' ? 'Atlas Vehicle Ferry' : 'Hostile Vehicle Ferry',
@@ -2156,8 +2215,8 @@ export class BattleEngine {
 
     if (!am.isCarrierBeached) {
       const distToLz = Math.hypot(am.landingZone.x - carrier.x, am.landingZone.y - carrier.y);
-      const bowBeachDistance = am.landingZone.radius + carrier.model.hullLength * 0.75;
-      if (distToLz <= bowBeachDistance) {
+      const deploymentTriggerDistance = Math.max(42, am.landingZone.radius * 0.55);
+      if (distToLz <= deploymentTriggerDistance) {
         am.isCarrierBeached = true;
         am.isDeploying = am.maxDeployUnits > 0;
         carrier.speed = 0;
@@ -2196,11 +2255,20 @@ export class BattleEngine {
           ...this.state.islands.map(island => island.points),
           ...(this.state.bridges || []).map(bridge => bridge.points),
         ];
-        const clearance = getLandClearance(spawnX, spawnY, landPolygons);
+        let clearance = getLandClearance(spawnX, spawnY, landPolygons);
         const requiredClearance = Math.max(deployingUnit.model.hullWidth, 36) * 0.65 + 18;
         if (!clearance.onLand || clearance.distanceToWater < requiredClearance) {
           spawnX = clearance.closestX + clearance.inwardNx * requiredClearance;
           spawnY = clearance.closestY + clearance.inwardNy * requiredClearance;
+          // Organic coastlines can have shallow concavities. Recheck the
+          // candidate and walk it farther inland until the whole vehicle has
+          // usable land clearance rather than merely touching the shoreline.
+          for (let attempt = 0; attempt < 6; attempt++) {
+            clearance = getLandClearance(spawnX, spawnY, landPolygons);
+            if (clearance.onLand && clearance.distanceToWater >= requiredClearance) break;
+            spawnX += clearance.inwardNx * 24;
+            spawnY += clearance.inwardNy * 24;
+          }
         }
 
         deployingUnit.x = spawnX;
