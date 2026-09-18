@@ -3315,13 +3315,17 @@ export class BattleEngine {
       return;
     }
 
-    // Mode 3 transporting NPCs use the moving semi as their formation anchor.
-    // Nearby attackers can pull an escort into a short tactical engagement, but
-    // an escort that falls well behind always breaks contact and catches up.
+    // Mode 3 transporting NPCs use a point slightly ahead of the moving semi as
+    // their formation anchor. Engagements are protective interceptions rather
+    // than duels: escorts break contact when either they or the fight falls behind.
     let movementTarget: Pick<ShipEntity, 'x' | 'y' | 'domain'> = target;
     let convoyCatchUp = false;
     if (friendlyConvoyTruck) {
       const convoyDistance = Math.hypot(friendlyConvoyTruck.x - ship.x, friendlyConvoyTruck.y - ship.y);
+      const headingX = Math.cos(friendlyConvoyTruck.angle);
+      const headingY = Math.sin(friendlyConvoyTruck.angle);
+      const escortProgress = (ship.x - friendlyConvoyTruck.x) * headingX
+        + (ship.y - friendlyConvoyTruck.y) * headingY;
       const combatTargetIsHostile = target.team !== ship.team;
       const combatTargetDistance = combatTargetIsHostile
         ? Math.hypot(target.x - ship.x, target.y - ship.y)
@@ -3329,28 +3333,34 @@ export class BattleEngine {
       const targetDistanceFromConvoy = combatTargetIsHostile
         ? Math.hypot(target.x - friendlyConvoyTruck.x, target.y - friendlyConvoyTruck.y)
         : Infinity;
+      const targetProgress = combatTargetIsHostile
+        ? (target.x - friendlyConvoyTruck.x) * headingX + (target.y - friendlyConvoyTruck.y) * headingY
+        : -Infinity;
+      const threatInsideProtectiveEnvelope = targetDistanceFromConvoy < 780 && targetProgress > -240;
+      const immediateSelfDefense = target.aiTargetId === ship.id && combatTargetDistance < 280;
       const immediateTacticalReason = combatTargetIsHostile
-        && combatTargetDistance < 540
-        && (targetDistanceFromConvoy < 850 || target.aiTargetId === ship.id);
-      convoyCatchUp = convoyDistance > 1050 || (convoyDistance > 620 && !immediateTacticalReason);
+        && combatTargetDistance < 520
+        && (threatInsideProtectiveEnvelope || immediateSelfDefense);
+      const hasFallenBehind = escortProgress < -280;
+      convoyCatchUp = hasFallenBehind
+        || convoyDistance > 1050
+        || (convoyDistance > 700 && !immediateTacticalReason);
 
       if (convoyCatchUp || !immediateTacticalReason) {
         const idSeed = Array.from(ship.id).reduce((sum, char) => sum + char.charCodeAt(0), 0);
         const side = idSeed % 2 === 0 ? 1 : -1;
-        const trailingDistance = ship.domain === 'air' ? 80 : 170;
-        // Land escorts aim at the road directly behind the semi; a lateral
-        // offset can place their catch-up point in water on narrow causeways.
+        const leadDistance = ship.domain === 'air' ? 250 : ship.domain === 'water' ? 190 : 270;
+        // Land escorts aim along the road ahead of the semi; a lateral offset
+        // can place their formation point in water on narrow causeways.
         const lateralDistance = ship.domain === 'water' ? 520 : ship.domain === 'air' ? 260 : 0;
-        const headingX = Math.cos(friendlyConvoyTruck.angle);
-        const headingY = Math.sin(friendlyConvoyTruck.angle);
         movementTarget = {
           x: Math.max(100, Math.min(
             this.state.arenaWidth - 100,
-            friendlyConvoyTruck.x - headingX * trailingDistance - headingY * side * lateralDistance
+            friendlyConvoyTruck.x + headingX * leadDistance - headingY * side * lateralDistance
           )),
           y: Math.max(100, Math.min(
             this.state.arenaHeight - 100,
-            friendlyConvoyTruck.y - headingY * trailingDistance + headingX * side * lateralDistance
+            friendlyConvoyTruck.y + headingY * leadDistance + headingX * side * lateralDistance
           )),
           domain: ship.domain,
         };
@@ -3372,8 +3382,8 @@ export class BattleEngine {
             for (let angleIndex = 0; angleIndex < flankAngles.length; angleIndex++) {
               const angle = friendlyConvoyTruck.angle + flankAngles[angleIndex];
               const candidate = {
-                x: friendlyConvoyTruck.x - headingX * 120 + Math.cos(angle) * radius,
-                y: friendlyConvoyTruck.y - headingY * 120 + Math.sin(angle) * radius,
+                x: friendlyConvoyTruck.x + headingX * leadDistance + Math.cos(angle) * radius,
+                y: friendlyConvoyTruck.y + headingY * leadDistance + Math.sin(angle) * radius,
               };
               if (candidate.x < 120 || candidate.x > this.state.arenaWidth - 120
                 || candidate.y < 120 || candidate.y > this.state.arenaHeight - 120) continue;
