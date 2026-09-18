@@ -465,6 +465,14 @@ export interface MapSpawnPoints {
   enemyWater: { x: number; y: number }[];
 }
 
+export interface MapRoad {
+  id: string;
+  name?: string;
+  points: { x: number; y: number }[];
+  width: number;
+  style?: 'military' | 'highway' | 'dirt';
+}
+
 export interface BattleMapConfig {
   id: string;
   name: string;
@@ -481,6 +489,7 @@ export interface BattleMapConfig {
   islandStyle: 'sand' | 'ice' | 'rock' | 'harbor' | 'volcano' | 'industrial' | 'reef';
   obstacles: BattleIsland[];
   bridges?: BattleBridge[];
+  roads?: MapRoad[];
   spawnPoints?: MapSpawnPoints;
   ambientWeather?: 'clear' | 'snow' | 'storm' | 'harbor' | 'magma' | 'dusk';
   gameMode?: GameMode;
@@ -588,6 +597,8 @@ export interface TransportMissionState {
   rearHummerShipId: string;
   waypoints: { x: number; y: number }[];
   currentWaypointIndex: number;
+  frontWaypointIndex: number;
+  rearWaypointIndex: number;
   destination: { x: number; y: number; radius: number };
   reachedDestination: boolean;
   isTruckDestroyed: boolean;

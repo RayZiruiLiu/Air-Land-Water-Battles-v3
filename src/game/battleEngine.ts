@@ -179,7 +179,7 @@ export class BattleEngine {
     const playerFactionTeam: Team = isTransportProtection && playerRole === 'attacker' ? 'enemy' : 'player';
     const opposingFactionTeam: Team = playerFactionTeam === 'player' ? 'enemy' : 'player';
     const transportingCombatCount = 8;
-    const attackingCombatCount = 3;
+    const attackingCombatCount = 5;
     const playerFactionCount = isTransportProtection
       ? (playerFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
       : shipsPerTeam;
@@ -639,10 +639,7 @@ export class BattleEngine {
         label: 'EXTRACTION ZONE',
       };
 
-      // Route geometry begins off-chart, but the physical three-vehicle
-      // formation stages just inside the western boundary so its order is not
-      // collapsed by arena collision handling on the first simulation tick.
-      const startPos = { ...waypoints[0], x: Math.max(250, waypoints[0].x) };
+      const startPos = waypoints[0];
       const truckModel = SHIP_MODEL_MAP.get('vip-convoy-semi-truck') || BASE_SHIPS.find(s => s.domain === 'land') || BASE_SHIPS[0];
       const convoyPalettes = [
         { name: 'Woodland Camouflage', pattern: 'woodland' as const, primary: '#3f4a32', accent: '#20291d' },
@@ -702,7 +699,7 @@ export class BattleEngine {
         domain: 'land',
         altitude: 0,
         weaponTargetMode: 'surface',
-        hasSurfaceWeapons: true,
+        hasSurfaceWeapons: false,
         hasAirWeapons: false,
         isConvoyTruck: true,
         convoyColorPattern: convoyPalette.pattern,
@@ -769,6 +766,8 @@ export class BattleEngine {
         rearHummerShipId: rearHummer.id,
         waypoints,
         currentWaypointIndex: 1,
+        frontWaypointIndex: 1,
+        rearWaypointIndex: 1,
         destination,
         reachedDestination: false,
         isTruckDestroyed: false,
@@ -1721,41 +1720,60 @@ export class BattleEngine {
       return;
     }
 
-    // Follow waypoints
-    const currentWp = tm.waypoints[tm.currentWaypointIndex] || tm.destination;
-    const distToWp = Math.hypot(currentWp.x - truck.x, currentWp.y - truck.y);
+    const frontHummer = this.state.ships.find(s => s.id === tm.frontHummerShipId);
+    const rearHummer = this.state.ships.find(s => s.id === tm.rearHummerShipId);
 
-    if (distToWp < 110) {
-      if (tm.currentWaypointIndex < tm.waypoints.length - 1) {
-        tm.currentWaypointIndex++;
-        this.addCombatLog(`Convoy transport cleared Checkpoint ${tm.currentWaypointIndex}/${tm.waypoints.length}!`, truck.team);
+    // Fixed convoy units use the authored road centerline directly. They never
+    // invoke tactical land pathfinding, so they cannot choose branches, circle
+    // an island, or wander away from the mission route.
+    const followRoad = (vehicle: ShipEntity, index: number, speedLevel: number): number => {
+      let nextIndex = Math.min(index, tm.waypoints.length - 1);
+      let waypoint = tm.waypoints[nextIndex] || tm.destination;
+      let distance = Math.hypot(waypoint.x - vehicle.x, waypoint.y - vehicle.y);
+      if (distance < 90 && nextIndex < tm.waypoints.length - 1) {
+        nextIndex++;
+        waypoint = tm.waypoints[nextIndex];
+        distance = Math.hypot(waypoint.x - vehicle.x, waypoint.y - vehicle.y);
       }
+      const desiredHeading = Math.atan2(waypoint.y - vehicle.y, waypoint.x - vehicle.x);
+      const headingError = Math.abs(this.normalizeAngle(desiredHeading - vehicle.angle));
+      this.applyAutopilotHeading(vehicle, desiredHeading, dt);
+      vehicle.targetSpeedLevel = headingError > 0.9 ? 0 : headingError > 0.48 ? Math.min(1, speedLevel) : speedLevel;
+      const location = this.landPathfinder.findLandLocation(vehicle.x, vehicle.y);
+      vehicle.landRouteBridgeId = location.type === 'bridge' ? location.bridge?.id : undefined;
+      return nextIndex;
+    };
+
+    const previousTruckWaypoint = tm.currentWaypointIndex;
+    tm.currentWaypointIndex = followRoad(truck, tm.currentWaypointIndex, 1);
+    if (tm.currentWaypointIndex > previousTruckWaypoint) {
+      this.addCombatLog(`Convoy transport cleared Checkpoint ${tm.currentWaypointIndex}/${tm.waypoints.length}!`, truck.team);
     }
 
-    // Steer towards current waypoint
-    const targetAngle = Math.atan2(currentWp.y - truck.y, currentWp.x - truck.x);
-    const angleDiff = this.normalizeAngle(targetAngle - truck.angle);
-    truck.targetRudderAngle = Math.max(-1, Math.min(1, angleDiff * 2.5));
-    truck.targetSpeedLevel = 1; // steady cruise speed
+    if (frontHummer && !frontHummer.isSunk) {
+      const frontGap = Math.hypot(frontHummer.x - truck.x, frontHummer.y - truck.y);
+      const frontSpeed = frontGap > 205 ? 0 : frontGap < 120 ? 2 : 1;
+      tm.frontWaypointIndex = followRoad(frontHummer, tm.frontWaypointIndex, frontSpeed);
+    }
+    if (rearHummer && !rearHummer.isSunk) {
+      const rearGap = Math.hypot(rearHummer.x - truck.x, rearHummer.y - truck.y);
+      const rearSpeed = rearGap > 205 ? 2 : rearGap < 115 ? 0 : 1;
+      tm.rearWaypointIndex = followRoad(rearHummer, tm.rearWaypointIndex, rearSpeed);
+    }
 
-    // The armed Hummers are permanent convoy bookends. They retain normal AI
-    // weapon use, while their movement is continuously pulled back into a
-    // front/semi/rear formation after each AI decision.
-    const steerFormationEscort = (shipId: string, offset: number) => {
-      const escort = this.state.ships.find(s => s.id === shipId);
-      if (!escort || escort.isSunk) return;
-      const desiredX = truck.x + Math.cos(truck.angle) * offset;
-      const desiredY = truck.y + Math.sin(truck.angle) * offset;
-      const dx = desiredX - escort.x;
-      const dy = desiredY - escort.y;
-      const distance = Math.hypot(dx, dy);
-      const desiredAngle = Math.atan2(dy, dx);
-      const escortAngleDiff = this.normalizeAngle(desiredAngle - escort.angle);
-      escort.targetRudderAngle = Math.max(-1, Math.min(1, escortAngleDiff * 2.8));
-      escort.targetSpeedLevel = distance > 260 ? 3 : distance > 105 ? 2 : distance < 55 ? 0 : 1;
-    };
-    steerFormationEscort(tm.frontHummerShipId, 155);
-    steerFormationEscort(tm.rearHummerShipId, -155);
+    // Fixed convoy weapons remain active without allowing combat AI to seize
+    // movement control from the predetermined route.
+    for (const escort of [frontHummer, rearHummer]) {
+      if (!escort || escort.isSunk) continue;
+      const nearest = this.state.ships
+        .filter(s => s.team !== escort.team && !s.isSunk)
+        .map(s => ({ ship: s, distance: Math.hypot(s.x - escort.x, s.y - escort.y) }))
+        .sort((a, b) => a.distance - b.distance)[0];
+      if (nearest) this.executeNpcGunnery(escort, nearest.ship, nearest.distance, dt);
+    }
+
+    const currentWp = tm.waypoints[tm.currentWaypointIndex] || tm.destination;
+    const distToWp = Math.hypot(currentWp.x - truck.x, currentWp.y - truck.y);
 
     // Check distance to destination extraction zone
     const distToDest = Math.hypot(tm.destination.x - truck.x, tm.destination.y - truck.y);
@@ -2249,13 +2267,15 @@ export class BattleEngine {
       const angleDiff = this.normalizeAngle(ship.angle - ship.articulatedAngle);
       // When turning or moving, trailer pivots smoothly toward the tractor cab heading
       const motionFactor = Math.max(0.4, Math.abs(ship.speed) / Math.max(1, ship.stats.speed * 0.45));
-      const followRate = (ship.speed >= 0 ? 4.8 : -3.6) * motionFactor;
+      const isConvoySemi = ship.model.spriteStyle.bodyStyle === 'convoy-semi';
+      const followRate = (ship.speed >= 0 ? (isConvoySemi ? 2.9 : 4.8) : (isConvoySemi ? -2.3 : -3.6)) * motionFactor;
       ship.articulatedAngle += angleDiff * Math.min(1.0, Math.abs(followRate) * dt) * Math.sign(followRate);
       ship.articulatedAngle = this.normalizeAngle(ship.articulatedAngle);
 
-      // Clamp max articulation to prevent unnatural jackknifing (+/- 48 degrees)
+      // The purpose-built convoy fifth wheel allows a much broader, natural
+      // trailer swing through the route's tight organic curves.
       const currentRel = this.normalizeAngle(ship.articulatedAngle - ship.angle);
-      const maxArticulation = 0.84;
+      const maxArticulation = isConvoySemi ? 1.30 : 0.84;
       if (Math.abs(currentRel) > maxArticulation) {
         ship.articulatedAngle = this.normalizeAngle(ship.angle + Math.sign(currentRel) * maxArticulation);
       }
@@ -2783,6 +2803,11 @@ export class BattleEngine {
   }
 
   private updateNpcAi(ship: ShipEntity, dt: number) {
+    // Fixed Mode 3 convoy movement and defensive gunnery are driven by
+    // updateTransportMission so combat AI cannot pull them off the road.
+    if (this.state.gameMode === 'transport-protection' && (ship.isConvoyTruck || ship.convoyEscortPosition)) {
+      return;
+    }
     ship.aiDecisionTimer = (ship.aiDecisionTimer || 0) - dt;
 
     // Returning helicopter bypasses standard AI to complete landing
@@ -2947,8 +2972,11 @@ export class BattleEngine {
     const enemyCommandStation = this.state.gameMode === 'command-station' && canEngageSurface
       ? this.state.commandStations?.find(cs => cs.team !== ship.team && !cs.isDestroyed)
       : undefined;
+    const enemyConvoyTruck = this.state.gameMode === 'transport-protection' && ship.team === 'enemy' && canEngageSurface
+      ? this.state.ships.find(s => s.id === this.state.transportMission?.truckShipId && !s.isSunk)
+      : undefined;
 
-    if (hostiles.length === 0 && !enemyCommandStation) {
+    if (hostiles.length === 0 && !enemyCommandStation && !enemyConvoyTruck) {
       // No targets left, return to gentle center cruise
       if (ship.domain === 'land') {
         const myIsland = this.landPathfinder.findLandLocation(ship.x, ship.y).island || this.state.islands[0];
@@ -3017,6 +3045,14 @@ export class BattleEngine {
       } as ShipEntity;
       minDist = Math.hypot(enemyCommandStation.x - ship.x, enemyCommandStation.y - ship.y);
       ship.aiTargetId = enemyCommandStation.id;
+      ship.weaponTargetMode = 'surface';
+    } else if (enemyConvoyTruck) {
+      // Mode 3 attackers advance on the win objective itself. Escort units can
+      // receive close-range self-defense fire, but cannot redirect the attack
+      // force into ordinary team-elimination behavior.
+      target = enemyConvoyTruck;
+      minDist = Math.hypot(enemyConvoyTruck.x - ship.x, enemyConvoyTruck.y - ship.y);
+      ship.aiTargetId = enemyConvoyTruck.id;
       ship.weaponTargetMode = 'surface';
     } else if (target) {
       ship.aiTargetId = target.id;
@@ -3451,6 +3487,14 @@ export class BattleEngine {
           }
         }
       }
+    } else if (enemyConvoyTruck) {
+      const maxRange = ship.stats.effectiveRange || 580;
+      const immediateThreat = tacticalTarget && tacticalTarget.id !== enemyConvoyTruck.id
+        && tacticalTargetDistance <= Math.min(230, maxRange * 0.45)
+        ? tacticalTarget
+        : enemyConvoyTruck;
+      const fireDistance = immediateThreat.id === enemyConvoyTruck.id ? minDist : tacticalTargetDistance;
+      this.executeNpcGunnery(ship, immediateThreat, fireDistance, dt);
     } else {
       this.executeNpcGunnery(ship, target, minDist, dt);
     }

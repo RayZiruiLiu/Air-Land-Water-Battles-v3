@@ -8,32 +8,80 @@ type ThemeSpec = {
   ambientWeather: 'clear' | 'snow' | 'magma' | 'storm';
   waterColors: BattleMapConfig['waterColors']; route: IslandSpec[];
   bridgeStyles: Array<'suspension' | 'truss' | 'concrete-highway' | 'timber-trestle' | 'arch-stone'>;
+  branchOffsets: [number, number];
 };
 
 const buildMode3Map = (spec: ThemeSpec, mapIndex: number): BattleMapConfig => {
-  const islands: BattleIsland[] = spec.route.map((land, index) => createIslandEx({
+  const routeIslands: BattleIsland[] = spec.route.map((land, index) => createIslandEx({
     ...land,
     style: spec.islandStyle,
     category: index === 0 || index === spec.route.length - 1 ? 'mainland' : undefined,
+    foliage: [
+      { x: land.x - land.rx * 0.16, y: land.y - land.ry * 0.2, radius: 18 + (index % 3) * 7, color: spec.islandStyle === 'ice' ? '#9fb8ca' : spec.islandStyle === 'volcano' ? '#4b3328' : '#4b5138', type: spec.islandStyle === 'industrial' ? 'building' : 'rock' },
+      { x: land.x + land.rx * 0.2, y: land.y + land.ry * 0.18, radius: 14 + ((index + 1) % 3) * 6, color: spec.islandStyle === 'volcano' ? '#6b2d1f' : '#59604a', type: spec.islandStyle === 'volcano' ? 'vent' : spec.islandStyle === 'reef' ? 'tree' : 'rock' },
+      { x: land.x - land.rx * 0.24, y: land.y + land.ry * 0.12, radius: 11 + (index % 2) * 5, color: '#343a32', type: index % 2 === 0 ? 'tower' : 'rock' },
+    ],
   }));
-  const bridges = islands.slice(0, -1).map((island, index) => connectIslands(
+  const routeBridges = routeIslands.slice(0, -1).map((island, index) => connectIslands(
     `m3-${mapIndex}-bridge-${index + 1}`, `${spec.theme} Route Span ${index + 1}`,
-    island, islands[index + 1], 170, spec.bridgeStyles[index % spec.bridgeStyles.length],
+    island, routeIslands[index + 1], 170, spec.bridgeStyles[index % spec.bridgeStyles.length],
   ));
-  const startY = spec.route[0].y;
-  const endY = spec.route[spec.route.length - 1].y;
+
+  const makeBranch = (fromIndex: number, toIndex: number, offset: number, branchIndex: number): BattleIsland => {
+    const from = spec.route[fromIndex];
+    const to = spec.route[toIndex];
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return createIslandEx({
+      x: Math.round((from.x + to.x) * 0.5 + (-dy / length) * offset),
+      y: Math.round((from.y + to.y) * 0.5 + (dx / length) * offset),
+      rx: branchIndex === 0 ? 390 : 330,
+      ry: branchIndex === 0 ? 300 : 430,
+      shape: branchIndex === 0 ? 'natural' : 'bastion',
+      style: spec.islandStyle,
+      seed: 70 + mapIndex * 2.3 + branchIndex * 0.61,
+      name: `${spec.theme} Alternate Route ${branchIndex + 1}`,
+      foliage: [
+        { x: Math.round((from.x + to.x) * 0.5 + (-dy / length) * offset) - 60, y: Math.round((from.y + to.y) * 0.5 + (dx / length) * offset) - 55, radius: 24, color: '#454a3e', type: 'rock' },
+        { x: Math.round((from.x + to.x) * 0.5 + (-dy / length) * offset) + 55, y: Math.round((from.y + to.y) * 0.5 + (dx / length) * offset) + 45, radius: 18, color: '#3b4236', type: spec.islandStyle === 'industrial' ? 'building' : 'tower' },
+      ],
+    });
+  };
+  const branchA = makeBranch(1, 3, spec.branchOffsets[0], 0);
+  const branchB = makeBranch(3, 5, spec.branchOffsets[1], 1);
+  const islands = [...routeIslands, branchA, branchB];
+  const alternateBridges = [
+    connectIslands(`m3-${mapIndex}-alt-a1`, 'Alternate Approach A', routeIslands[1], branchA, 145, spec.bridgeStyles[1 % spec.bridgeStyles.length]),
+    connectIslands(`m3-${mapIndex}-alt-a2`, 'Alternate Approach B', branchA, routeIslands[3], 145, spec.bridgeStyles[2 % spec.bridgeStyles.length]),
+    connectIslands(`m3-${mapIndex}-alt-b1`, 'Alternate Bypass A', routeIslands[3], branchB, 145, spec.bridgeStyles[0]),
+    connectIslands(`m3-${mapIndex}-alt-b2`, 'Alternate Bypass B', branchB, routeIslands[5], 145, spec.bridgeStyles[1 % spec.bridgeStyles.length]),
+  ];
+  const bridges = [...routeBridges, ...alternateBridges];
+
+  const pointAtX = (a: IslandSpec, b: IslandSpec, x: number) => {
+    const t = (x - a.x) / Math.max(1, b.x - a.x);
+    return { x, y: Math.round(a.y + (b.y - a.y) * t) };
+  };
+  const entry = pointAtX(spec.route[0], spec.route[1], 250);
+  const exit = pointAtX(spec.route[spec.route.length - 2], spec.route[spec.route.length - 1], 4660);
+  const routeCenters = spec.route.map(({ x, y }) => ({ x, y }));
+  const convoyWaypoints = [entry, ...routeCenters.slice(1, -1), exit];
+  const roads = [
+    { id: `m3-${mapIndex}-primary-road`, name: 'Convoy Route', points: routeCenters, width: 54, style: 'military' as const },
+    { id: `m3-${mapIndex}-branch-a`, name: 'Northern Alternate', points: [routeCenters[1], { x: branchA.x, y: branchA.y }, routeCenters[3]], width: 42, style: 'dirt' as const },
+    { id: `m3-${mapIndex}-branch-b`, name: 'Southern Alternate', points: [routeCenters[3], { x: branchB.x, y: branchB.y }, routeCenters[5]], width: 46, style: 'highway' as const },
+  ];
+  const startY = entry.y;
+  const endY = exit.y;
   return {
     id: spec.id, name: spec.name, gameMode: 'transport-protection', theme: spec.theme,
     description: spec.description, dimensions: { width: 4800, height: 3200 },
     waterColors: spec.waterColors, islandStyle: spec.islandStyle, ambientWeather: spec.ambientWeather,
     // Both mainlands and the route endpoints continue beyond the chart; the
     // renderer crops their excess geometry at the playable boundary.
-    convoyWaypoints: [
-      { x: -150, y: startY },
-      ...spec.route.slice(1, -1).map(({ x, y }) => ({ x, y })),
-      { x: 4950, y: endY },
-    ],
-    destinationZone: { x: 4660, y: endY, radius: 190, label: 'EXTRACTION CORRIDOR' },
+    convoyWaypoints,
+    destinationZone: { x: exit.x, y: exit.y, radius: 115, label: 'ROAD EXTRACTION POINT' },
     spawnPoints: {
       playerLand: [
         { x: 120, y: startY - 400 }, { x: 170, y: startY + 400 },
@@ -53,7 +101,7 @@ const buildMode3Map = (spec: ThemeSpec, mapIndex: number): BattleMapConfig => {
         { x: 3970, y: Math.min(2920, endY + 590) },
       ],
     },
-    obstacles: islands, bridges,
+    obstacles: islands, bridges, roads,
   };
 };
 
@@ -64,14 +112,15 @@ const THEMES: ThemeSpec[] = [
     islandStyle: 'sand', ambientWeather: 'clear',
     waterColors: { deep: '#0d324d', mid: '#154e79', surface: '#1b6ca8', wave: 'rgba(255, 255, 255, 0.12)', boundary: 'rgba(27, 108, 168, 0.35)' },
     bridgeStyles: ['suspension', 'truss', 'concrete-highway'],
+    branchOffsets: [560, -540],
     route: [
-      { x: -430, y: 2180, rx: 930, ry: 900, shape: 'continent', seed: 51.11, name: 'Tarifa Western Headland' },
+      { x: -430, y: 2180, rx: 1400, ry: 1050, shape: 'continent', seed: 51.11, name: 'Tarifa Western Headland' },
       { x: 860, y: 1780, rx: 330, ry: 470, shape: 'natural', seed: 51.27, name: 'Caleta Crooked Shelf' },
       { x: 1600, y: 930, rx: 360, ry: 300, shape: 'skerry', seed: 51.43, name: 'Alboran High Rock' },
       { x: 2360, y: 1510, rx: 300, ry: 510, shape: 'bastion', seed: 51.68, name: 'Chafarinas Spur' },
       { x: 3140, y: 2370, rx: 430, ry: 320, shape: 'natural', seed: 51.91, name: 'Habibas Low Shelf' },
       { x: 3870, y: 1830, rx: 290, ry: 420, shape: 'skerry', seed: 52.14, name: 'Oran Gate Rock' },
-      { x: 5250, y: 1210, rx: 1030, ry: 980, shape: 'continent', seed: 52.39, name: 'Eastern Oran Headland' },
+      { x: 5250, y: 1210, rx: 1450, ry: 1120, shape: 'continent', seed: 52.39, name: 'Eastern Oran Headland' },
     ],
   },
   {
@@ -80,14 +129,15 @@ const THEMES: ThemeSpec[] = [
     islandStyle: 'sand', ambientWeather: 'clear',
     waterColors: { deep: '#143828', mid: '#1d523b', surface: '#297353', wave: 'rgba(230, 255, 240, 0.1)', boundary: 'rgba(41, 115, 83, 0.35)' },
     bridgeStyles: ['timber-trestle', 'arch-stone', 'concrete-highway'],
+    branchOffsets: [-560, 540],
     route: [
-      { x: -390, y: 870, rx: 860, ry: 760, shape: 'continent', seed: 53.08, name: 'Padma Floodplain' },
+      { x: -390, y: 870, rx: 1350, ry: 1020, shape: 'continent', seed: 53.08, name: 'Padma Floodplain' },
       { x: 810, y: 1280, rx: 310, ry: 520, shape: 'natural', seed: 53.22, name: 'Char Kaliganj' },
       { x: 1430, y: 2310, rx: 390, ry: 310, shape: 'skerry', seed: 53.47, name: 'Lower Meghna Bar' },
       { x: 2240, y: 1940, rx: 280, ry: 450, shape: 'natural', seed: 53.63, name: 'Barisal Hook' },
       { x: 2940, y: 820, rx: 460, ry: 330, shape: 'natural', seed: 53.89, name: 'Noakhali Bend' },
       { x: 3790, y: 1390, rx: 340, ry: 510, shape: 'bastion', seed: 54.06, name: 'Feni Lock Island' },
-      { x: 5220, y: 2250, rx: 1050, ry: 880, shape: 'continent', seed: 54.31, name: 'Chittagong East Bank' },
+      { x: 5220, y: 2250, rx: 1440, ry: 1100, shape: 'continent', seed: 54.31, name: 'Chittagong East Bank' },
     ],
   },
   {
@@ -96,14 +146,15 @@ const THEMES: ThemeSpec[] = [
     islandStyle: 'ice', ambientWeather: 'snow',
     waterColors: { deep: '#0f2438', mid: '#183852', surface: '#234c6e', wave: 'rgba(220, 240, 255, 0.15)', boundary: 'rgba(70, 130, 180, 0.35)' },
     bridgeStyles: ['concrete-highway', 'truss', 'suspension'],
+    branchOffsets: [560, -540],
     route: [
-      { x: -470, y: 2500, rx: 970, ry: 780, shape: 'continent', seed: 55.13, name: 'Nordkapp Ice Shelf' },
+      { x: -470, y: 2500, rx: 1480, ry: 1060, shape: 'continent', seed: 55.13, name: 'Nordkapp Ice Shelf' },
       { x: 900, y: 2200, rx: 360, ry: 280, shape: 'skerry', seed: 55.36, name: 'Mageroya Floe' },
       { x: 1510, y: 1210, rx: 300, ry: 500, shape: 'natural', seed: 55.51, name: 'Porsanger Needle' },
       { x: 2290, y: 650, rx: 440, ry: 270, shape: 'natural', seed: 55.77, name: 'Tana Ice Bar' },
       { x: 3040, y: 1580, rx: 320, ry: 560, shape: 'bastion', seed: 56.02, name: 'Varanger Rampart' },
       { x: 3880, y: 2320, rx: 410, ry: 300, shape: 'skerry', seed: 56.29, name: 'Kirkenes Outer Floe' },
-      { x: 5290, y: 1740, rx: 1080, ry: 1020, shape: 'continent', seed: 56.48, name: 'Kirkenes Continental Ice' },
+      { x: 5290, y: 1740, rx: 1510, ry: 1180, shape: 'continent', seed: 56.48, name: 'Kirkenes Continental Ice' },
     ],
   },
   {
@@ -112,14 +163,15 @@ const THEMES: ThemeSpec[] = [
     islandStyle: 'volcano', ambientWeather: 'magma',
     waterColors: { deep: '#1a181e', mid: '#2b232a', surface: '#3d3036', wave: 'rgba(255, 120, 50, 0.1)', boundary: 'rgba(180, 80, 40, 0.35)' },
     bridgeStyles: ['truss', 'concrete-highway', 'suspension'],
+    branchOffsets: [-560, 540],
     route: [
-      { x: -420, y: 1450, rx: 970, ry: 1050, shape: 'continent', seed: 57.12, name: 'Western Basalt Field' },
+      { x: -420, y: 1450, rx: 1410, ry: 1180, shape: 'continent', seed: 57.12, name: 'Western Basalt Field' },
       { x: 890, y: 760, rx: 300, ry: 390, shape: 'bastion', seed: 57.39, name: 'Cinder Fang' },
       { x: 1550, y: 1680, rx: 440, ry: 290, shape: 'natural', seed: 57.56, name: 'Ashen Saddle' },
       { x: 2390, y: 2480, rx: 310, ry: 390, shape: 'skerry', seed: 57.81, name: 'South Vent Rock' },
       { x: 3100, y: 1320, rx: 390, ry: 520, shape: 'natural', seed: 58.04, name: 'Obsidian Hook' },
       { x: 3900, y: 1960, rx: 320, ry: 310, shape: 'bastion', seed: 58.27, name: 'Caldera Gate' },
-      { x: 5260, y: 830, rx: 1030, ry: 900, shape: 'continent', seed: 58.49, name: 'Eastern Lava Plateau' },
+      { x: 5260, y: 830, rx: 1460, ry: 1100, shape: 'continent', seed: 58.49, name: 'Eastern Lava Plateau' },
     ],
   },
   {
@@ -128,14 +180,15 @@ const THEMES: ThemeSpec[] = [
     islandStyle: 'reef', ambientWeather: 'clear',
     waterColors: { deep: '#0c2e3b', mid: '#154555', surface: '#1f5f73', wave: 'rgba(180, 240, 230, 0.12)', boundary: 'rgba(31, 95, 115, 0.35)' },
     bridgeStyles: ['suspension', 'timber-trestle', 'arch-stone'],
+    branchOffsets: [-560, 540],
     route: [
-      { x: -440, y: 640, rx: 900, ry: 820, shape: 'continent', seed: 59.14, name: 'Pacific Jungle Bank' },
+      { x: -440, y: 640, rx: 1390, ry: 1080, shape: 'continent', seed: 59.14, name: 'Pacific Jungle Bank' },
       { x: 850, y: 1120, rx: 360, ry: 300, shape: 'natural', seed: 59.31, name: 'Miraflores Shelf' },
       { x: 1450, y: 2220, rx: 290, ry: 490, shape: 'skerry', seed: 59.58, name: 'Pedro Miguel Spur' },
       { x: 2240, y: 1610, rx: 450, ry: 310, shape: 'natural', seed: 59.76, name: 'Gaillard Cut Island' },
       { x: 2980, y: 2520, rx: 300, ry: 330, shape: 'bastion', seed: 60.01, name: 'Gatun South Lock' },
       { x: 3760, y: 1160, rx: 410, ry: 530, shape: 'natural', seed: 60.24, name: 'Colon Forest Hook' },
-      { x: 5240, y: 1900, rx: 1060, ry: 950, shape: 'continent', seed: 60.46, name: 'Atlantic Jungle Bank' },
+      { x: 5240, y: 1900, rx: 1470, ry: 1130, shape: 'continent', seed: 60.46, name: 'Atlantic Jungle Bank' },
     ],
   },
   {
@@ -144,14 +197,15 @@ const THEMES: ThemeSpec[] = [
     islandStyle: 'industrial', ambientWeather: 'storm',
     waterColors: { deep: '#0b1f33', mid: '#122d4a', surface: '#1a3c61', wave: 'rgba(190, 220, 240, 0.14)', boundary: 'rgba(80, 110, 140, 0.4)' },
     bridgeStyles: ['concrete-highway', 'truss', 'arch-stone'],
+    branchOffsets: [560, -540],
     route: [
-      { x: -460, y: 1920, rx: 930, ry: 980, shape: 'continent', seed: 61.09, name: 'Hanko Western Works' },
+      { x: -460, y: 1920, rx: 1430, ry: 1120, shape: 'continent', seed: 61.09, name: 'Hanko Western Works' },
       { x: 820, y: 2470, rx: 330, ry: 280, shape: 'bastion', seed: 61.34, name: 'Minefield Redoubt' },
       { x: 1450, y: 1390, rx: 390, ry: 510, shape: 'natural', seed: 61.57, name: 'Gulf Signal Island' },
       { x: 2290, y: 760, rx: 310, ry: 330, shape: 'skerry', seed: 61.82, name: 'Iron Watch Rock' },
       { x: 2960, y: 1850, rx: 470, ry: 300, shape: 'bastion', seed: 62.05, name: 'Kotlin Gun Shelf' },
       { x: 3810, y: 2260, rx: 320, ry: 490, shape: 'natural', seed: 62.23, name: 'Neva Approach Spur' },
-      { x: 5270, y: 1280, rx: 1070, ry: 1030, shape: 'continent', seed: 62.44, name: 'Eastern Fortress Coast' },
+      { x: 5270, y: 1280, rx: 1490, ry: 1190, shape: 'continent', seed: 62.44, name: 'Eastern Fortress Coast' },
     ],
   },
 ];

@@ -1,5 +1,5 @@
 import { BattleState } from './battleEngine';
-import { BattleBridge, BattleIsland, CommandStationEntity, DefensiveWeaponEntity, Particle, Projectile, ShipEntity } from '../types/ship';
+import { BattleBridge, BattleIsland, CommandStationEntity, DefensiveWeaponEntity, MapRoad, Particle, Projectile, ShipEntity } from '../types/ship';
 import { COMPONENT_MAP } from '../data/components';
 
 function normalizeAngle(a: number): number {
@@ -45,10 +45,20 @@ export function renderBattle(
   for (const island of state.islands) {
     drawIsland(ctx, island);
   }
+  for (const road of state.mapConfig.roads || []) {
+    drawMapRoad(ctx, road);
+  }
   if (clipBoundaryLand) ctx.restore();
 
   // 2.5 Draw Mission Objectives (Waypoints, Extraction Zone, Beachhead)
+  if (state.gameMode === 'transport-protection') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, state.arenaWidth, state.arenaHeight);
+    ctx.clip();
+  }
   drawMissionObjectives(ctx, state);
+  if (state.gameMode === 'transport-protection') ctx.restore();
 
   // 3. Draw Water Ripples
   for (const ripple of state.ripples) {
@@ -68,11 +78,18 @@ export function renderBattle(
   }
 
   // 5. Draw Bridges (Connecting landmasses across water channels)
+  if (clipBoundaryLand) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, state.arenaWidth, state.arenaHeight);
+    ctx.clip();
+  }
   if (state.bridges) {
     for (const bridge of state.bridges) {
       drawBridge(ctx, bridge, state.time);
     }
   }
+  if (clipBoundaryLand) ctx.restore();
 
   // 6. Draw Land Combat Vehicles (Tanks, IFVs, SPAAGs driving over land & bridges)
   const landVehicles = state.ships.filter(s => s.domain === 'land');
@@ -707,6 +724,37 @@ function drawIsland(ctx: CanvasRenderingContext2D, island: BattleIsland) {
   ctx.restore();
 }
 
+function drawMapRoad(ctx: CanvasRenderingContext2D, road: MapRoad) {
+  if (road.points.length < 2) return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const trace = () => {
+    ctx.beginPath();
+    ctx.moveTo(road.points[0].x, road.points[0].y);
+    for (let i = 1; i < road.points.length; i++) ctx.lineTo(road.points[i].x, road.points[i].y);
+  };
+
+  trace();
+  ctx.strokeStyle = 'rgba(12, 16, 18, 0.88)';
+  ctx.lineWidth = road.width + 10;
+  ctx.stroke();
+
+  trace();
+  ctx.strokeStyle = road.style === 'dirt' ? '#655642' : road.style === 'highway' ? '#3f4650' : '#4a4b43';
+  ctx.lineWidth = road.width;
+  ctx.stroke();
+
+  trace();
+  ctx.strokeStyle = road.style === 'dirt' ? 'rgba(214, 190, 138, 0.55)' : 'rgba(250, 204, 21, 0.72)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash(road.style === 'dirt' ? [5, 12] : [18, 14]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function drawBridge(ctx: CanvasRenderingContext2D, bridge: BattleBridge, time: number) {
   if (!bridge || !bridge.points || bridge.points.length < 4) return;
   ctx.save();
@@ -1244,6 +1292,7 @@ function drawLandVehicle(
   const chassis = vehicle.model.chassisType || 'tracked';
   const bodyStyle = vehicle.model.spriteStyle.bodyStyle || 'tank';
   const isArticulatedSemi = bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi';
+  const articulationPivotX = bodyStyle === 'convoy-semi' ? halfL * 0.26 : halfL * 0.18;
 
   // Wrecked / Destroyed vehicle visual
   if (vehicle.isSunk) {
@@ -1257,8 +1306,42 @@ function drawLandVehicle(
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.42)';
   ctx.lineWidth = 4;
   ctx.lineJoin = 'round';
-  if (isArticulatedSemi) {
-    const pivotX = halfL * 0.18;
+  if (bodyStyle === 'convoy-semi') {
+    const pivotX = articulationPivotX;
+    const relAngle = vehicle.articulatedAngle !== undefined ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle) : 0;
+    // Unique long-nose tractor shadow.
+    ctx.beginPath();
+    ctx.moveTo(halfL, -halfW * 0.32);
+    ctx.lineTo(halfL * 0.88, -halfW * 0.62);
+    ctx.lineTo(halfL * 0.38, -halfW * 0.72);
+    ctx.lineTo(halfL * 0.24, -halfW * 0.38);
+    ctx.lineTo(halfL * 0.24, halfW * 0.38);
+    ctx.lineTo(halfL * 0.38, halfW * 0.72);
+    ctx.lineTo(halfL * 0.88, halfW * 0.62);
+    ctx.lineTo(halfL, halfW * 0.32);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Extra-long beveled cargo trailer shadow around the fifth wheel.
+    ctx.save();
+    ctx.translate(pivotX, 0);
+    ctx.rotate(relAngle);
+    ctx.translate(-pivotX, 0);
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.25, -halfW * 0.22);
+    ctx.lineTo(halfL * 0.12, -halfW * 0.84);
+    ctx.lineTo(-halfL * 0.96, -halfW * 0.84);
+    ctx.lineTo(-halfL, -halfW * 0.58);
+    ctx.lineTo(-halfL, halfW * 0.58);
+    ctx.lineTo(-halfL * 0.96, halfW * 0.84);
+    ctx.lineTo(halfL * 0.12, halfW * 0.84);
+    ctx.lineTo(halfL * 0.25, halfW * 0.22);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  } else if (isArticulatedSemi) {
+    const pivotX = articulationPivotX;
     const relAngle = vehicle.articulatedAngle !== undefined
       ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
       : 0;
@@ -1308,7 +1391,9 @@ function drawLandVehicle(
   ctx.restore();
 
   // 2. Chassis: Tracks, Wheeled Running Gear, Dune-Buggy, Half-Track, or Multi-Axle Trucks
-  drawRunningGear(ctx, chassis, length, width, vehicle, time);
+  if (bodyStyle !== 'convoy-semi') {
+    drawRunningGear(ctx, chassis, length, width, vehicle, time);
+  }
 
   // 3. Primary Armored Vehicle Hull & Bodywork
   const hullColor = vehicle.config.primaryColor || vehicle.model.spriteStyle.hullColor;
@@ -1336,7 +1421,7 @@ function drawLandVehicle(
     const isTrailerMount = (isArticulatedSemi && hp.x <= 0.18);
     ctx.save();
     if (isTrailerMount) {
-      const pivotX = halfL * 0.18;
+      const pivotX = articulationPivotX;
       const relAngle = vehicle.articulatedAngle !== undefined
         ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
         : 0;
@@ -1353,7 +1438,7 @@ function drawLandVehicle(
   // 6. IFF Tactical Identification Panel at Rear (Grounded Blue vs Red)
   ctx.save();
   if (isArticulatedSemi) {
-    const pivotX = halfL * 0.18;
+    const pivotX = articulationPivotX;
     const relAngle = vehicle.articulatedAngle !== undefined
       ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
       : 0;
@@ -2999,7 +3084,22 @@ function drawLandVehicleSilhouettePath(
     ctx.lineTo(-halfL * 0.25, halfW * 0.9);
     ctx.lineTo(-halfL * 0.2, halfW * 0.78);
     ctx.lineTo(halfL * 0.8, halfW * 0.78);
-  } else if (bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi') {
+  } else if (bodyStyle === 'convoy-semi') {
+    ctx.moveTo(halfL, -halfW * 0.32);
+    ctx.lineTo(halfL * 0.88, -halfW * 0.62);
+    ctx.lineTo(halfL * 0.38, -halfW * 0.72);
+    ctx.lineTo(halfL * 0.24, -halfW * 0.38);
+    ctx.lineTo(halfL * 0.12, -halfW * 0.84);
+    ctx.lineTo(-halfL * 0.96, -halfW * 0.84);
+    ctx.lineTo(-halfL, -halfW * 0.58);
+    ctx.lineTo(-halfL, halfW * 0.58);
+    ctx.lineTo(-halfL * 0.96, halfW * 0.84);
+    ctx.lineTo(halfL * 0.12, halfW * 0.84);
+    ctx.lineTo(halfL * 0.24, halfW * 0.38);
+    ctx.lineTo(halfL * 0.38, halfW * 0.72);
+    ctx.lineTo(halfL * 0.88, halfW * 0.62);
+    ctx.lineTo(halfL, halfW * 0.32);
+  } else if (bodyStyle === 'semi-sam') {
     // Semi-truck SAM launcher: blunt square front bumper, cab step, fifth-wheel waist, wide launcher trailer bed
     ctx.moveTo(halfL, -halfW * 0.45);
     ctx.lineTo(halfL * 0.96, -halfW * 0.75);
@@ -3593,7 +3693,145 @@ function drawVehicleBody(
     // Forward Right Engine Deck Grill
     ctx.fillStyle = '#18181b';
     ctx.fillRect(halfL * 0.25, -halfW * 0.65, halfL * 0.45, halfW * 0.6);
-  } else if (bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi') {
+  } else if (bodyStyle === 'convoy-semi') {
+    // === PURPOSE-BUILT MODE 3 CONVOY SEMI ===
+    // Independent long-nose armored tractor; no geometry is shared with the
+    // selectable flatbed or SAM tractor designs.
+    ctx.beginPath();
+    ctx.moveTo(halfL, -halfW * 0.3);
+    ctx.lineTo(halfL * 0.9, -halfW * 0.56);
+    ctx.lineTo(halfL * 0.68, -halfW * 0.62);
+    ctx.lineTo(halfL * 0.58, -halfW * 0.76);
+    ctx.lineTo(halfL * 0.34, -halfW * 0.76);
+    ctx.lineTo(halfL * 0.24, -halfW * 0.4);
+    ctx.lineTo(halfL * 0.24, halfW * 0.4);
+    ctx.lineTo(halfL * 0.34, halfW * 0.76);
+    ctx.lineTo(halfL * 0.58, halfW * 0.76);
+    ctx.lineTo(halfL * 0.68, halfW * 0.62);
+    ctx.lineTo(halfL * 0.9, halfW * 0.56);
+    ctx.lineTo(halfL, halfW * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = hullColor;
+    ctx.fill();
+    ctx.stroke();
+
+    // Low armored engine bonnet and inset grille.
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.roundRect(halfL * 0.68, -halfW * 0.46, halfL * 0.25, halfW * 0.92, 5);
+    ctx.fill();
+    ctx.fillStyle = '#101418';
+    ctx.fillRect(halfL * 0.92, -halfW * 0.34, 4, halfW * 0.68);
+    ctx.strokeStyle = '#77808a';
+    ctx.lineWidth = 1;
+    for (let gy = -halfW * 0.28; gy <= halfW * 0.28; gy += 4) {
+      ctx.beginPath();
+      ctx.moveTo(halfL * 0.92, gy);
+      ctx.lineTo(halfL * 0.96, gy);
+      ctx.stroke();
+    }
+
+    // Faceted cab with one wraparound ballistic windshield.
+    ctx.fillStyle = deckColor;
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.64, -halfW * 0.65);
+    ctx.lineTo(halfL * 0.58, -halfW * 0.72);
+    ctx.lineTo(halfL * 0.35, -halfW * 0.68);
+    ctx.lineTo(halfL * 0.29, -halfW * 0.4);
+    ctx.lineTo(halfL * 0.29, halfW * 0.4);
+    ctx.lineTo(halfL * 0.35, halfW * 0.68);
+    ctx.lineTo(halfL * 0.58, halfW * 0.72);
+    ctx.lineTo(halfL * 0.64, halfW * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#111827';
+    ctx.stroke();
+    ctx.fillStyle = '#0b2230';
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.63, -halfW * 0.55);
+    ctx.lineTo(halfL * 0.57, -halfW * 0.62);
+    ctx.lineTo(halfL * 0.48, -halfW * 0.6);
+    ctx.lineTo(halfL * 0.48, halfW * 0.6);
+    ctx.lineTo(halfL * 0.57, halfW * 0.62);
+    ctx.lineTo(halfL * 0.63, halfW * 0.55);
+    ctx.closePath();
+    ctx.fill();
+
+    // Tractor running gear unique to the objective rig.
+    ctx.fillStyle = '#090b0d';
+    [halfL * 0.78, halfL * 0.36].forEach(wx => {
+      ctx.fillRect(wx - 7, -halfW * 0.88, 14, 7);
+      ctx.fillRect(wx - 7, halfW * 0.88 - 7, 14, 7);
+    });
+
+    const pivotX = halfL * 0.26;
+    const relAngle = vehicle && vehicle.articulatedAngle !== undefined
+      ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
+      : 0;
+
+    // Exposed fifth-wheel plate, kingpin and flexible armored draw connection.
+    ctx.fillStyle = '#111827';
+    ctx.beginPath();
+    ctx.arc(pivotX, 0, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.3, 0);
+    ctx.lineTo(halfL * 0.12, 0);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(pivotX, 0);
+    ctx.rotate(relAngle);
+    ctx.translate(-pivotX, 0);
+
+    // Significantly extended armored trailer with a tapered gooseneck and
+    // beveled tail, designed specifically around mission cargo.
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.25, -halfW * 0.2);
+    ctx.lineTo(halfL * 0.12, -halfW * 0.78);
+    ctx.lineTo(-halfL * 0.9, -halfW * 0.82);
+    ctx.lineTo(-halfL * 0.99, -halfW * 0.55);
+    ctx.lineTo(-halfL * 0.99, halfW * 0.55);
+    ctx.lineTo(-halfL * 0.9, halfW * 0.82);
+    ctx.lineTo(halfL * 0.12, halfW * 0.78);
+    ctx.lineTo(halfL * 0.25, halfW * 0.2);
+    ctx.closePath();
+    ctx.fillStyle = hullColor;
+    ctx.fill();
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Raised sealed cargo spine and asymmetric service panels.
+    ctx.fillStyle = deckColor;
+    ctx.beginPath();
+    ctx.roundRect(-halfL * 0.88, -halfW * 0.62, halfL * 0.94, halfW * 1.24, 5);
+    ctx.fill();
+    ctx.strokeStyle = accentColor;
+    ctx.stroke();
+    ctx.lineWidth = 1.2;
+    for (let tx = -halfL * 0.78; tx < 0; tx += 15) {
+      ctx.beginPath();
+      ctx.moveTo(tx, -halfW * 0.58);
+      ctx.lineTo(tx + 5, halfW * 0.58);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#151a1f';
+    ctx.fillRect(-halfL * 0.82, -halfW * 0.2, halfL * 0.7, halfW * 0.4);
+
+    // Independent tandem trailer bogies rotate with the trailer.
+    ctx.fillStyle = '#07090b';
+    [-halfL * 0.72, -halfL * 0.86].forEach(wx => {
+      ctx.fillRect(wx - 7, -halfW * 0.98, 14, 8);
+      ctx.fillRect(wx - 7, halfW * 0.98 - 8, 14, 8);
+    });
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(-halfL * 0.985, -halfW * 0.48, 3, halfW * 0.96);
+    ctx.restore();
+  } else if (bodyStyle === 'semi-sam') {
     // === PATRIOT MOBILE SAM ARTICULATED SEMI-TRUCK ===
     // 1. Tractor Unit (Cab-over military tractor with authentic truck front)
     ctx.beginPath();
@@ -3690,33 +3928,16 @@ function drawVehicleBody(
     ctx.fill();
     ctx.stroke();
 
-    if (bodyStyle === 'convoy-semi') {
-      // Long armored cargo container with ribs, locking bars, and a unique
-      // high-visibility convoy chevron at the rear.
-      ctx.fillStyle = deckColor;
-      ctx.fillRect(-halfL * 0.91, -halfW * 0.78, halfL * 0.98, halfW * 1.56);
-      ctx.strokeStyle = accentColor;
-      ctx.lineWidth = 1.4;
-      for (let tx = -halfL * 0.82; tx < 0; tx += 10) {
-        ctx.beginPath();
-        ctx.moveTo(tx, -halfW * 0.74);
-        ctx.lineTo(tx, halfW * 0.74);
-        ctx.stroke();
-      }
-      ctx.fillStyle = '#111827';
-      ctx.fillRect(-halfL * 0.9, -1.5, halfL * 0.94, 3);
-    } else {
-      // Launcher Trailer Deck Diamond-Plate Tread
-      ctx.fillStyle = deckColor;
-      ctx.fillRect(-halfL * 0.92, -halfW * 0.85, halfL * 1.0, halfW * 1.7);
-      ctx.strokeStyle = '#3f3f46';
-      ctx.lineWidth = 1;
-      for (let tx = -halfL * 0.85; tx < halfL * 0.05; tx += 12) {
-        ctx.beginPath();
-        ctx.moveTo(tx, -halfW * 0.8);
-        ctx.lineTo(tx, halfW * 0.8);
-        ctx.stroke();
-      }
+    // Launcher Trailer Deck Diamond-Plate Tread
+    ctx.fillStyle = deckColor;
+    ctx.fillRect(-halfL * 0.92, -halfW * 0.85, halfL * 1.0, halfW * 1.7);
+    ctx.strokeStyle = '#3f3f46';
+    ctx.lineWidth = 1;
+    for (let tx = -halfL * 0.85; tx < halfL * 0.05; tx += 12) {
+      ctx.beginPath();
+      ctx.moveTo(tx, -halfW * 0.8);
+      ctx.lineTo(tx, halfW * 0.8);
+      ctx.stroke();
     }
 
     // Rear Hazard Striping & Mudflaps
@@ -5039,20 +5260,23 @@ export function drawMissionObjectives(ctx: CanvasRenderingContext2D, state: Batt
       ctx.restore();
     }
 
-    // VIP truck escort aura
+    // Transparent pulsing yellow mission-target indicator
     const truck = state.ships.find(s => s.id === tm.truckShipId && !s.isSunk);
     if (truck) {
       ctx.save();
       ctx.translate(truck.x, truck.y);
-      const ringRadius = 48 + Math.sin(time * 4) * 4;
+      const ringRadius = Math.max(72, truck.model.hullLength * 0.48) + Math.sin(time * 3.6) * 7;
       ctx.beginPath();
       ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
-      ctx.strokeStyle = truck.team === 'player' ? '#f59e0b' : '#ef4444';
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([8, 6]);
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.035)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.62)';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([11, 8]);
+      ctx.lineDashOffset = -time * 18;
       ctx.stroke();
 
-      ctx.fillStyle = truck.team === 'player' ? '#f59e0b' : '#ef4444';
+      ctx.fillStyle = 'rgba(253, 224, 71, 0.88)';
       ctx.font = 'bold 10px monospace';
       ctx.textAlign = 'center';
       ctx.fillText('VIP CARGO RIG', 0, -ringRadius - 6);
