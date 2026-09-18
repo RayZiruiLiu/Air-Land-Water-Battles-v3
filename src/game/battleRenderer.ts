@@ -33,9 +33,19 @@ export function renderBattle(
   drawOcean(ctx, state.arenaWidth, state.arenaHeight, state.time, state.mapConfig);
 
   // 2. Draw Islands / Map Landmasses
+  // Mode 2 coastal landmasses deliberately continue past an arena edge. Keep
+  // their rendered coastlines inside the playable chart.
+  const clipMode2Land = state.gameMode === 'command-station';
+  if (clipMode2Land) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, state.arenaWidth, state.arenaHeight);
+    ctx.clip();
+  }
   for (const island of state.islands) {
     drawIsland(ctx, island);
   }
+  if (clipMode2Land) ctx.restore();
 
   // 2.5 Draw Mission Objectives (Waypoints, Extraction Zone, Beachhead)
   drawMissionObjectives(ctx, state);

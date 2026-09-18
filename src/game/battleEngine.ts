@@ -2834,7 +2834,11 @@ export class BattleEngine {
       }
     }
 
-    if (hostiles.length === 0) {
+    const enemyCommandStation = this.state.gameMode === 'command-station' && canEngageSurface
+      ? this.state.commandStations?.find(cs => cs.team !== ship.team && !cs.isDestroyed)
+      : undefined;
+
+    if (hostiles.length === 0 && !enemyCommandStation) {
       // No targets left, return to gentle center cruise
       if (ship.domain === 'land') {
         const myIsland = this.landPathfinder.findLandLocation(ship.x, ship.y).island || this.state.islands[0];
@@ -2889,24 +2893,27 @@ export class BattleEngine {
       }
     }
 
-    if (!target) {
-      // If no enemy ships, target opposing Command Station in Mode 2 or Mode 4
-      const enemyHQ = this.state.commandStations?.find(cs => cs.team !== ship.team && !cs.isDestroyed);
-      if (enemyHQ) {
-        const dHQ = Math.hypot(enemyHQ.x - ship.x, enemyHQ.y - ship.y);
-        const targetAngle = Math.atan2(enemyHQ.y - ship.y, enemyHQ.x - ship.x);
-        const angleDiff = this.normalizeAngle(targetAngle - ship.angle);
-        ship.targetRudderAngle = Math.max(-1, Math.min(1, angleDiff * 2.0));
-        ship.targetSpeedLevel = dHQ > 450 ? 2 : 1;
-        ship.weaponTargetMode = 'surface';
-        if (dHQ < (ship.stats.effectiveRange || 750)) {
-          this.fireShipWeapons(ship, enemyHQ.x, enemyHQ.y);
-        }
-      }
+    const tacticalTarget = target;
+    const tacticalTargetDistance = minDist;
+
+    // Mode 2 is objective warfare: every surface-capable NPC advances on the
+    // opposing command station. Nearby units remain valid self-defense targets,
+    // but no longer pull the force away from the strategic objective.
+    if (enemyCommandStation) {
+      target = {
+        x: enemyCommandStation.x,
+        y: enemyCommandStation.y,
+        domain: 'land',
+      } as ShipEntity;
+      minDist = Math.hypot(enemyCommandStation.x - ship.x, enemyCommandStation.y - ship.y);
+      ship.aiTargetId = enemyCommandStation.id;
+      ship.weaponTargetMode = 'surface';
+    } else if (target) {
+      ship.aiTargetId = target.id;
+      ship.weaponTargetMode = target.domain === 'air' ? 'air' : 'surface';
+    } else {
       return;
     }
-    ship.aiTargetId = target.id;
-    ship.weaponTargetMode = target.domain === 'air' ? 'air' : 'surface';
 
     // =========================================================================
     // OBSTACLE STUCK DETECTION & UNSTUCK TRIGGER
@@ -3307,7 +3314,36 @@ export class BattleEngine {
     // =========================================================================
     // 5. WEAPON FIRING & TARGETING
     // =========================================================================
-    this.executeNpcGunnery(ship, target, minDist, dt);
+    if (enemyCommandStation) {
+      const maxRange = ship.stats.effectiveRange || 580;
+      const immediateThreat = tacticalTarget && tacticalTargetDistance <= Math.min(560, maxRange * 1.1)
+        ? tacticalTarget
+        : null;
+      const nearbyDefense = this.state.defensiveWeapons
+        ?.filter(w => w.team !== ship.team && !w.isDestroyed)
+        .map(w => ({ weapon: w, distance: Math.hypot(w.x - ship.x, w.y - ship.y) }))
+        .filter(candidate => candidate.distance <= Math.min(620, maxRange * 1.1))
+        .sort((a, b) => a.distance - b.distance)[0];
+
+      if (immediateThreat) {
+        this.executeNpcGunnery(ship, immediateThreat, tacticalTargetDistance, dt);
+      } else {
+        ship.aiFireTimer = (ship.aiFireTimer || 0) - dt;
+        if (ship.aiFireTimer <= 0) {
+          const aimTarget = nearbyDefense?.weapon || enemyCommandStation;
+          const aimDistance = nearbyDefense?.distance || minDist;
+          if (aimDistance <= maxRange * 1.1) {
+            ship.weaponTargetMode = 'surface';
+            const didFire = this.fireShipWeapons(ship, aimTarget.x, aimTarget.y);
+            ship.aiFireTimer = didFire ? 0.45 + Math.random() * 0.35 : 0.15 + Math.random() * 0.15;
+          } else {
+            ship.aiFireTimer = 0.25;
+          }
+        }
+      }
+    } else {
+      this.executeNpcGunnery(ship, target, minDist, dt);
+    }
   }
 
   /**

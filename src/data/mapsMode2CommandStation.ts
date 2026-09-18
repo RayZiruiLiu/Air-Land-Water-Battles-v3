@@ -10,8 +10,8 @@ const MED_ISLANDS: BattleIsland[] = [
   createIslandEx({
     x: 350,
     y: 920,
-    rx: 1400,
-    ry: 1600,
+    rx: 820,
+    ry: 900,
     shape: 'continent',
     style: 'sand',
     seed: 2.1,
@@ -28,8 +28,8 @@ const MED_ISLANDS: BattleIsland[] = [
   createIslandEx({
     x: 4450,
     y: 2280,
-    rx: 1500,
-    ry: 1400,
+    rx: 850,
+    ry: 820,
     shape: 'continent',
     style: 'sand',
     seed: 7.7,
@@ -44,10 +44,10 @@ const MED_ISLANDS: BattleIsland[] = [
 
   // 2. Gozo North Channel Cape (Allied Flank / Forward Staging)
   createIslandEx({
-    x: 1600,
-    y: 640,
-    rx: 650,
-    ry: 580,
+    x: 1500,
+    y: 520,
+    rx: 460,
+    ry: 380,
     shape: 'bastion',
     style: 'sand',
     seed: 3.4,
@@ -57,10 +57,10 @@ const MED_ISLANDS: BattleIsland[] = [
 
   // 3. Marsaxlokk South Ridge (Allied South Headland)
   createIslandEx({
-    x: 1320,
-    y: 2150,
-    rx: 700,
-    ry: 620,
+    x: 1250,
+    y: 2360,
+    rx: 440,
+    ry: 420,
     shape: 'natural',
     style: 'sand',
     seed: 4.8,
@@ -70,10 +70,10 @@ const MED_ISLANDS: BattleIsland[] = [
 
   // 4. Comino Grand Central Atoll (High Strategic Value Mid-Map Crossing)
   createIslandEx({
-    x: 2380,
-    y: 1280,
-    rx: 720,
-    ry: 640,
+    x: 2420,
+    y: 1220,
+    rx: 480,
+    ry: 390,
     shape: 'continent',
     style: 'sand',
     seed: 5.2,
@@ -86,10 +86,10 @@ const MED_ISLANDS: BattleIsland[] = [
 
   // 5. Filfla Sound Bastion (South-Central Contested Isle)
   createIslandEx({
-    x: 2780,
-    y: 2320,
-    rx: 650,
-    ry: 680,
+    x: 2660,
+    y: 2520,
+    rx: 410,
+    ry: 430,
     shape: 'bastion',
     style: 'sand',
     seed: 6.1,
@@ -99,10 +99,10 @@ const MED_ISLANDS: BattleIsland[] = [
 
   // 6. Mellieha Forward Outpost (Hostile North Flank Barrier)
   createIslandEx({
-    x: 3480,
-    y: 960,
-    rx: 640,
-    ry: 560,
+    x: 3450,
+    y: 720,
+    rx: 440,
+    ry: 360,
     shape: 'natural',
     style: 'sand',
     seed: 8.3,
@@ -112,10 +112,10 @@ const MED_ISLANDS: BattleIsland[] = [
 
   // 7. Birgu Coastal Redoubt (Hostile South Approaches)
   createIslandEx({
-    x: 3520,
-    y: 2580,
-    rx: 620,
-    ry: 580,
+    x: 3420,
+    y: 2660,
+    rx: 400,
+    ry: 360,
     shape: 'bastion',
     style: 'sand',
     seed: 9.1,
@@ -144,10 +144,10 @@ const MED_BRIDGES = [
 const ARCTIC_ISLANDS: BattleIsland[] = [
   // 0. Allied Arctic Base Landmass (Extends past left & bottom boundaries)
   createIslandEx({
-    x: 380,
-    y: 2240,
-    rx: 1450,
-    ry: 1550,
+    x: 360,
+    y: 2380,
+    rx: 820,
+    ry: 900,
     shape: 'continent',
     style: 'ice',
     seed: 11.2,
@@ -161,10 +161,10 @@ const ARCTIC_ISLANDS: BattleIsland[] = [
 
   // 1. Hostile Arctic Base Landmass (Roughly opposite in Northeast; extends past right & top boundaries)
   createIslandEx({
-    x: 4420,
-    y: 920,
-    rx: 1500,
-    ry: 1450,
+    x: 4480,
+    y: 760,
+    rx: 880,
+    ry: 820,
     shape: 'continent',
     style: 'ice',
     seed: 12.8,
@@ -178,10 +178,10 @@ const ARCTIC_ISLANDS: BattleIsland[] = [
 
   // 2. Isfjorden South Promontory
   createIslandEx({
-    x: 1580,
-    y: 2450,
-    rx: 680,
-    ry: 600,
+    x: 1500,
+    y: 2660,
+    rx: 450,
+    ry: 370,
     shape: 'natural',
     style: 'ice',
     seed: 13.1,
@@ -190,10 +190,10 @@ const ARCTIC_ISLANDS: BattleIsland[] = [
 
   // 3. Nordenskiold West Ridge
   createIslandEx({
-    x: 1350,
-    y: 1120,
-    rx: 650,
-    ry: 640,
+    x: 1230,
+    y: 1160,
+    rx: 420,
+    ry: 460,
     shape: 'bastion',
     style: 'ice',
     seed: 13.7,
@@ -203,9 +203,9 @@ const ARCTIC_ISLANDS: BattleIsland[] = [
   // 4. Central Ice-Shelf Basin (Mid-Straits Crossroad)
   createIslandEx({
     x: 2320,
-    y: 1740,
-    rx: 740,
-    ry: 660,
+    y: 1810,
+    rx: 470,
+    ry: 410,
     shape: 'continent',
     style: 'ice',
     seed: 14.5,
@@ -214,10 +214,10 @@ const ARCTIC_ISLANDS: BattleIsland[] = [
 
   // 5. Tempelfjorden Spire (Northeast Outwork)
   createIslandEx({
-    x: 2920,
-    y: 860,
-    rx: 640,
-    ry: 580,
+    x: 3050,
+    y: 650,
+    rx: 390,
+    ry: 370,
     shape: 'natural',
     style: 'ice',
     seed: 15.2,
@@ -226,10 +226,10 @@ const ARCTIC_ISLANDS: BattleIsland[] = [
 
   // 6. Adventfjorden Glacier Isle (Southeast Outwork)
   createIslandEx({
-    x: 3220,
-    y: 2280,
-    rx: 680,
-    ry: 620,
+    x: 3370,
+    y: 2440,
+    rx: 450,
+    ry: 390,
     shape: 'bastion',
     style: 'ice',
     seed: 15.9,
@@ -255,10 +255,10 @@ const ARCTIC_BRIDGES = [
 const VOLCANO_ISLANDS: BattleIsland[] = [
   // 0. Allied Geothermal Base (Extends past left boundary)
   createIslandEx({
-    x: 360,
-    y: 1200,
-    rx: 1400,
-    ry: 1600,
+    x: 320,
+    y: 1120,
+    rx: 820,
+    ry: 930,
     shape: 'continent',
     style: 'volcano',
     seed: 17.2,
@@ -272,10 +272,10 @@ const VOLCANO_ISLANDS: BattleIsland[] = [
 
   // 1. Hostile Geothermal Base (Roughly opposite side in Southeast; extends past right boundary)
   createIslandEx({
-    x: 4440,
-    y: 2120,
-    rx: 1450,
-    ry: 1480,
+    x: 4510,
+    y: 2250,
+    rx: 860,
+    ry: 850,
     shape: 'continent',
     style: 'volcano',
     seed: 18.5,
@@ -289,10 +289,10 @@ const VOLCANO_ISLANDS: BattleIsland[] = [
 
   // 2. Caldera North Ridge
   createIslandEx({
-    x: 1480,
-    y: 720,
-    rx: 660,
-    ry: 580,
+    x: 1380,
+    y: 550,
+    rx: 430,
+    ry: 350,
     shape: 'bastion',
     style: 'volcano',
     seed: 19.3,
@@ -301,10 +301,10 @@ const VOLCANO_ISLANDS: BattleIsland[] = [
 
   // 3. Basalt South Horn
   createIslandEx({
-    x: 1380,
-    y: 2360,
-    rx: 680,
-    ry: 620,
+    x: 1480,
+    y: 2560,
+    rx: 450,
+    ry: 390,
     shape: 'natural',
     style: 'volcano',
     seed: 20.1,
@@ -313,10 +313,10 @@ const VOLCANO_ISLANDS: BattleIsland[] = [
 
   // 4. Central Boiling Atoll (Fuming Crater Rim Crossway)
   createIslandEx({
-    x: 2380,
-    y: 1540,
-    rx: 760,
-    ry: 680,
+    x: 2350,
+    y: 1380,
+    rx: 470,
+    ry: 420,
     shape: 'continent',
     style: 'volcano',
     seed: 21.4,
@@ -325,10 +325,10 @@ const VOLCANO_ISLANDS: BattleIsland[] = [
 
   // 5. Obsidian North Crag
   createIslandEx({
-    x: 3340,
-    y: 920,
-    rx: 650,
-    ry: 580,
+    x: 3330,
+    y: 620,
+    rx: 410,
+    ry: 360,
     shape: 'bastion',
     style: 'volcano',
     seed: 22.1,
@@ -338,9 +338,9 @@ const VOLCANO_ISLANDS: BattleIsland[] = [
   // 6. Ash Plain South Outwork
   createIslandEx({
     x: 3380,
-    y: 2420,
-    rx: 680,
-    ry: 620,
+    y: 2570,
+    rx: 430,
+    ry: 400,
     shape: 'natural',
     style: 'volcano',
     seed: 22.9,
@@ -366,10 +366,10 @@ const VOLCANO_BRIDGES = [
 const PANAMA_ISLANDS: BattleIsland[] = [
   // 0. Allied Pacific Canal Headland (Extends past left & bottom map borders)
   createIslandEx({
-    x: 420,
-    y: 2280,
-    rx: 1420,
-    ry: 1500,
+    x: 350,
+    y: 2390,
+    rx: 840,
+    ry: 900,
     shape: 'continent',
     style: 'reef',
     seed: 24.2,
@@ -383,10 +383,10 @@ const PANAMA_ISLANDS: BattleIsland[] = [
 
   // 1. Hostile Atlantic Canal Headland (Roughly opposite in Northeast; extends past right & top borders)
   createIslandEx({
-    x: 4400,
-    y: 950,
-    rx: 1480,
-    ry: 1450,
+    x: 4470,
+    y: 760,
+    rx: 870,
+    ry: 820,
     shape: 'continent',
     style: 'reef',
     seed: 25.6,
@@ -400,10 +400,10 @@ const PANAMA_ISLANDS: BattleIsland[] = [
 
   // 2. Miraflores South Basin Isle
   createIslandEx({
-    x: 1620,
-    y: 2440,
-    rx: 680,
-    ry: 600,
+    x: 1510,
+    y: 2720,
+    rx: 450,
+    ry: 350,
     shape: 'natural',
     style: 'reef',
     seed: 26.3,
@@ -412,10 +412,10 @@ const PANAMA_ISLANDS: BattleIsland[] = [
 
   // 3. Pedro Miguel Ridge
   createIslandEx({
-    x: 1340,
-    y: 1140,
-    rx: 650,
-    ry: 640,
+    x: 1190,
+    y: 1260,
+    rx: 400,
+    ry: 450,
     shape: 'bastion',
     style: 'reef',
     seed: 27.1,
@@ -424,10 +424,10 @@ const PANAMA_ISLANDS: BattleIsland[] = [
 
   // 4. Gatun Grand Shipping Lock Isle (Central Shipping Lane Control Hub)
   createIslandEx({
-    x: 2350,
-    y: 1760,
-    rx: 760,
-    ry: 660,
+    x: 2260,
+    y: 1870,
+    rx: 480,
+    ry: 400,
     shape: 'continent',
     style: 'reef',
     seed: 28.5,
@@ -436,10 +436,10 @@ const PANAMA_ISLANDS: BattleIsland[] = [
 
   // 5. Gamboa Cut Jungle Ridge
   createIslandEx({
-    x: 2980,
-    y: 880,
-    rx: 640,
-    ry: 580,
+    x: 3010,
+    y: 680,
+    rx: 390,
+    ry: 350,
     shape: 'natural',
     style: 'reef',
     seed: 29.2,
@@ -448,10 +448,10 @@ const PANAMA_ISLANDS: BattleIsland[] = [
 
   // 6. Culebra Basin Outwork
   createIslandEx({
-    x: 3250,
-    y: 2320,
-    rx: 680,
-    ry: 620,
+    x: 3440,
+    y: 2480,
+    rx: 450,
+    ry: 390,
     shape: 'bastion',
     style: 'reef',
     seed: 30.1,
@@ -477,10 +477,10 @@ const PANAMA_BRIDGES = [
 const BALTIC_ISLANDS: BattleIsland[] = [
   // 0. Allied Western Fortress Landmass (Extends past left boundary)
   createIslandEx({
-    x: 360,
-    y: 1720,
-    rx: 1420,
-    ry: 1650,
+    x: 330,
+    y: 1850,
+    rx: 830,
+    ry: 940,
     shape: 'continent',
     style: 'industrial',
     seed: 32.4,
@@ -495,10 +495,10 @@ const BALTIC_ISLANDS: BattleIsland[] = [
 
   // 1. Hostile Eastern Fortress Landmass (Roughly opposite side, asymmetric y; extends past right boundary)
   createIslandEx({
-    x: 4440,
-    y: 1460,
-    rx: 1480,
-    ry: 1550,
+    x: 4500,
+    y: 1280,
+    rx: 870,
+    ry: 880,
     shape: 'continent',
     style: 'industrial',
     seed: 33.8,
@@ -513,10 +513,10 @@ const BALTIC_ISLANDS: BattleIsland[] = [
 
   // 2. Kotlin North Bastion Shoal
   createIslandEx({
-    x: 1480,
-    y: 840,
-    rx: 660,
-    ry: 580,
+    x: 1370,
+    y: 650,
+    rx: 420,
+    ry: 360,
     shape: 'bastion',
     style: 'industrial',
     seed: 34.6,
@@ -525,10 +525,10 @@ const BALTIC_ISLANDS: BattleIsland[] = [
 
   // 3. Lomonosov South Ridge
   createIslandEx({
-    x: 1420,
-    y: 2420,
-    rx: 680,
-    ry: 620,
+    x: 1540,
+    y: 2690,
+    rx: 450,
+    ry: 370,
     shape: 'natural',
     style: 'industrial',
     seed: 35.3,
@@ -537,10 +537,10 @@ const BALTIC_ISLANDS: BattleIsland[] = [
 
   // 4. Grand Roadstead Central Fortress (Strategic Iron Bastion at map center)
   createIslandEx({
-    x: 2380,
-    y: 1580,
-    rx: 760,
-    ry: 680,
+    x: 2290,
+    y: 1590,
+    rx: 470,
+    ry: 410,
     shape: 'continent',
     style: 'industrial',
     seed: 36.5,
@@ -549,10 +549,10 @@ const BALTIC_ISLANDS: BattleIsland[] = [
 
   // 5. Fort Constantine Shoal
   createIslandEx({
-    x: 3340,
-    y: 860,
-    rx: 640,
-    ry: 560,
+    x: 3210,
+    y: 580,
+    rx: 400,
+    ry: 350,
     shape: 'bastion',
     style: 'industrial',
     seed: 37.2,
@@ -561,10 +561,10 @@ const BALTIC_ISLANDS: BattleIsland[] = [
 
   // 6. Fort Alexander Outwork
   createIslandEx({
-    x: 3380,
-    y: 2360,
-    rx: 660,
-    ry: 600,
+    x: 3500,
+    y: 2350,
+    rx: 430,
+    ry: 380,
     shape: 'bastion',
     style: 'industrial',
     seed: 38.1,
@@ -621,9 +621,9 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         y: 2220,
         name: 'Valletta Eastern Command Citadel',
         defensiveWeapons: [
-          { id: 'dw-m1-e1', name: 'Hostile Coastal Battery Omega', x: 3960, y: 2060, type: 'cannon', hp: 520, range: 780, damage: 55 },
+          { id: 'dw-m1-e1', name: 'Hostile Coastal Battery Omega', x: 4100, y: 2060, type: 'cannon', hp: 520, range: 780, damage: 55 },
           { id: 'dw-m1-e2', name: 'Hostile VLS Missile Silo', x: 3920, y: 2380, type: 'missile', hp: 420, range: 880, damage: 75 },
-          { id: 'dw-m1-e3', name: 'Hostile CIWS Flak Tower', x: 4120, y: 1900, type: 'ciws', hp: 360, range: 540, damage: 22 },
+          { id: 'dw-m1-e3', name: 'Hostile CIWS Flak Tower', x: 4200, y: 1960, type: 'ciws', hp: 360, range: 540, damage: 22 },
         ],
       },
     },
@@ -645,7 +645,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         { x: 4120, y: 2320 },
         { x: 4320, y: 2220 },
         { x: 3900, y: 2220 },
-        { x: 3520, y: 1040 },
+        { x: 3450, y: 720 },
       ],
       enemyWater: [
         { x: 3550, y: 1650 },
@@ -678,7 +678,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         y: 2180,
         name: 'Barentsburg Allied Glacial HQ',
         defensiveWeapons: [
-          { id: 'dw-arc-p1', name: 'Polar Heavy Howitzer Battery', x: 840, y: 2020, type: 'cannon', hp: 520, range: 780, damage: 55 },
+          { id: 'dw-arc-p1', name: 'Polar Heavy Howitzer Battery', x: 720, y: 2140, type: 'cannon', hp: 520, range: 780, damage: 55 },
           { id: 'dw-arc-p2', name: 'Glacial Hypersonic Missile Silo', x: 780, y: 2420, type: 'missile', hp: 420, range: 880, damage: 75 },
           { id: 'dw-arc-p3', name: 'Arctic Perimeter CIWS Tower', x: 950, y: 2240, type: 'ciws', hp: 360, range: 540, damage: 22 },
         ],
@@ -688,7 +688,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         y: 980,
         name: 'Longyearbyen Hostile Command Bunker',
         defensiveWeapons: [
-          { id: 'dw-arc-e1', name: 'Hostile Frozen Bastion Gun', x: 3960, y: 1140, type: 'cannon', hp: 520, range: 780, damage: 55 },
+          { id: 'dw-arc-e1', name: 'Hostile Frozen Bastion Gun', x: 4140, y: 1040, type: 'cannon', hp: 520, range: 780, damage: 55 },
           { id: 'dw-arc-e2', name: 'Hardened Ice-Cap Missile Pod', x: 3920, y: 820, type: 'missile', hp: 420, range: 880, damage: 75 },
           { id: 'dw-arc-e3', name: 'Arctic Rapid Flak Turret', x: 4120, y: 1260, type: 'ciws', hp: 360, range: 540, damage: 22 },
         ],
@@ -704,7 +704,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
       ],
       playerWater: [
         { x: 1050, y: 1650 },
-        { x: 1250, y: 1400 },
+        { x: 1650, y: 1450 },
         { x: 850, y: 1500 },
       ],
       enemyLand: [
@@ -712,7 +712,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         { x: 4120, y: 1060 },
         { x: 4300, y: 980 },
         { x: 3880, y: 980 },
-        { x: 2900, y: 920 },
+        { x: 3050, y: 650 },
       ],
       enemyWater: [
         { x: 3650, y: 1500 },
@@ -755,7 +755,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         y: 2080,
         name: 'Hostile Geothermal Extraction Station',
         defensiveWeapons: [
-          { id: 'dw-vol-e1', name: 'Hostile Caldera Heavy Battery', x: 3980, y: 1920, type: 'cannon', hp: 520, range: 780, damage: 55 },
+          { id: 'dw-vol-e1', name: 'Hostile Caldera Heavy Battery', x: 4140, y: 2020, type: 'cannon', hp: 520, range: 780, damage: 55 },
           { id: 'dw-vol-e2', name: 'Hostile Lava Tube Missile Silo', x: 3940, y: 2260, type: 'missile', hp: 420, range: 880, damage: 75 },
           { id: 'dw-vol-e3', name: 'Hostile Volcanic Flak Tower', x: 4140, y: 1780, type: 'ciws', hp: 360, range: 540, damage: 22 },
         ],
@@ -779,7 +779,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         { x: 4140, y: 2160 },
         { x: 4320, y: 2080 },
         { x: 3920, y: 2080 },
-        { x: 3340, y: 2360 },
+        { x: 3380, y: 2570 },
       ],
       enemyWater: [
         { x: 3550, y: 1500 },
@@ -814,7 +814,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         defensiveWeapons: [
           { id: 'dw-pan-p1', name: 'Balboa Coastal Defense Battery', x: 840, y: 2020, type: 'cannon', hp: 520, range: 780, damage: 55 },
           { id: 'dw-pan-p2', name: 'Isthmus Surface SAM Launcher', x: 760, y: 2420, type: 'missile', hp: 420, range: 880, damage: 75 },
-          { id: 'dw-pan-p3', name: 'Perimeter Vulcan CIWS Tower', x: 940, y: 2220, type: 'ciws', hp: 360, range: 540, damage: 22 },
+          { id: 'dw-pan-p3', name: 'Perimeter Vulcan CIWS Tower', x: 780, y: 2250, type: 'ciws', hp: 360, range: 540, damage: 22 },
         ],
       },
       enemy: {
@@ -822,9 +822,9 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         y: 1020,
         name: 'Atlantic Locks Hostile Command Citadel',
         defensiveWeapons: [
-          { id: 'dw-pan-e1', name: 'Cristobal Coastal Fortress Battery', x: 3960, y: 1180, type: 'cannon', hp: 520, range: 780, damage: 55 },
+          { id: 'dw-pan-e1', name: 'Cristobal Coastal Fortress Battery', x: 4140, y: 980, type: 'cannon', hp: 520, range: 780, damage: 55 },
           { id: 'dw-pan-e2', name: 'High-Canopy Missile Silo Battery', x: 4020, y: 800, type: 'missile', hp: 420, range: 880, damage: 75 },
-          { id: 'dw-pan-e3', name: 'Lock Gate CIWS Emplacement', x: 3820, y: 980, type: 'ciws', hp: 360, range: 540, damage: 22 },
+          { id: 'dw-pan-e3', name: 'Lock Gate CIWS Emplacement', x: 4100, y: 780, type: 'ciws', hp: 360, range: 540, damage: 22 },
         ],
       },
     },
@@ -833,20 +833,20 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         { x: 700, y: 2140 },
         { x: 700, y: 2300 },
         { x: 540, y: 2220 },
-        { x: 920, y: 2120 },
-        { x: 1580, y: 2420 },
+        { x: 780, y: 2240 },
+        { x: 1510, y: 2650 },
       ],
       playerWater: [
         { x: 1050, y: 1650 },
-        { x: 1250, y: 1400 },
+        { x: 1660, y: 1450 },
         { x: 900, y: 1550 },
       ],
       enemyLand: [
         { x: 4120, y: 940 },
         { x: 4120, y: 1100 },
         { x: 4280, y: 1020 },
-        { x: 3880, y: 1020 },
-        { x: 2960, y: 940 },
+        { x: 4140, y: 900 },
+        { x: 3010, y: 680 },
       ],
       enemyWater: [
         { x: 3650, y: 1550 },
@@ -901,7 +901,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         { x: 660, y: 1760 },
         { x: 500, y: 1680 },
         { x: 880, y: 1680 },
-        { x: 1440, y: 880 },
+        { x: 1370, y: 650 },
       ],
       playerWater: [
         { x: 1050, y: 1250 },
@@ -913,7 +913,7 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
         { x: 4140, y: 1580 },
         { x: 4300, y: 1500 },
         { x: 3900, y: 1500 },
-        { x: 3340, y: 920 },
+        { x: 3210, y: 580 },
       ],
       enemyWater: [
         { x: 3650, y: 1250 },
