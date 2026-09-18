@@ -517,10 +517,10 @@ export class BattleEngine {
       const playerPos = mapConfig.commandStationPositions?.player || { x: 750, y: arenaHeight * 0.5, name: 'Allied Naval Citadel' };
       const enemyPos = mapConfig.commandStationPositions?.enemy || { x: arenaWidth - 750, y: arenaHeight * 0.5, name: 'Hostile Naval Citadel' };
 
-      // Durable enough to remain the central battle objective without turning
-      // the station into the lengthy damage sponge used by older builds.
-      const baseStationHp = 2100;
-      const defenseHpScale = 1.15;
+      // Command stations must withstand a prolonged coordinated siege, while
+      // their separate defensive emplacements receive a smaller durability bump.
+      const baseStationHp = 6000;
+      const defenseHpScale = 1.25;
 
       const playerStation: CommandStationEntity = {
         id: 'cs-player-hq',
