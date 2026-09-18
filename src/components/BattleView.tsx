@@ -80,7 +80,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
       engine.stop();
       engineRef.current = null;
     };
-  }, [playerConfig, settings.shipsPerTeam, settings.selectedMapId, settings.gameMode]);
+  }, [playerConfig, settings.shipsPerTeam, settings.selectedMapId, settings.gameMode, settings.playerRole]);
 
   // Handle Canvas Rendering & Resize
   useEffect(() => {
@@ -369,6 +369,9 @@ export const BattleView: React.FC<BattleViewProps> = ({
   const aliveAllies = alliedShips.filter(s => !s.isSunk).length;
   const aliveEnemies = enemyShips.filter(s => !s.isSunk).length;
 
+  const playerFaction = battleState?.ships.find(ship => ship.isPlayer)?.team || 'player';
+  const didPlayerWin = battleState?.winner === playerFaction;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none">
       {/* Main Ocean Battle Canvas */}
@@ -453,7 +456,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           <div>
             <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-200">
-              <span>Allied Division</span>
+              <span>{battleState?.gameMode === 'transport-protection' && playerFaction === 'enemy' ? 'Blue Transporting Team' : 'Allied Division'}</span>
               <span className="font-mono text-[10px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">
                 {aliveAllies}/{alliedShips.length}
               </span>
@@ -577,7 +580,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
               <span className="font-mono text-[10px] text-rose-400 bg-rose-950 px-1.5 py-0.5 rounded">
                 {aliveEnemies}/{enemyShips.length}
               </span>
-              <span>Hostile Battlegroup</span>
+              <span>{battleState?.gameMode === 'transport-protection' && playerFaction === 'enemy' ? 'Your Red Attacking Team' : 'Hostile Battlegroup'}</span>
             </div>
             {/* Health indicators */}
             <div className="flex items-center justify-end gap-1.5 mt-1">
@@ -686,7 +689,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
                 const truck = battleState.ships.find(s => s.id === tm.truckShipId);
                 const truckHp = truck ? Math.max(0, truck.currentHp) : 0;
                 const truckMaxHp = truck ? truck.maxHp : 5500;
-                const isPlayerDefending = tm.transportTeam === 'player';
+                const isPlayerDefending = battleState.playerRole === 'defender';
                 return (
                   <div className="w-full flex flex-col gap-1.5">
                     <div className="flex items-center justify-between text-[11px] font-mono">
@@ -697,7 +700,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
                       <span className="text-slate-300 font-bold">
                         {tm.isTruckDestroyed ? (
                           <span className="text-rose-400">RIG DESTROYED</span>
-                        ) : tm.isDelivered ? (
+                        ) : tm.reachedDestination ? (
                           <span className="text-emerald-400">EXTRACTED</span>
                         ) : (
                           `${Math.round(truckHp)} / ${truckMaxHp} HP`
@@ -1299,17 +1302,17 @@ export const BattleView: React.FC<BattleViewProps> = ({
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 lg:p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center">
             <div
               className={`w-16 h-16 rounded-3xl flex items-center justify-center text-3xl shadow-xl mb-4 ${
-                battleState.winner === 'player'
+                didPlayerWin
                   ? 'bg-gradient-to-br from-emerald-500 to-cyan-600 text-white shadow-emerald-600/30'
                   : 'bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-rose-600/30'
               }`}
             >
-              {battleState.winner === 'player' ? '🏆' : '💀'}
+              {didPlayerWin ? '🏆' : '💀'}
             </div>
 
             <h2 className="text-2xl font-black text-stone-100 tracking-tight">
               {(() => {
-                const isWin = battleState.winner === 'player';
+                const isWin = didPlayerWin;
                 if (battleState.winReason === 'command_station_destroyed') {
                   return isWin ? 'COMMAND CITADEL CONQUERED!' : 'COMMAND CITADEL LOST!';
                 }
@@ -1330,7 +1333,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
             </h2>
             <p className="text-xs text-stone-300 mt-1 mb-6 leading-relaxed">
               {(() => {
-                const isWin = battleState.winner === 'player';
+                const isWin = didPlayerWin;
                 if (battleState.winReason === 'command_station_destroyed') {
                   return isWin
                     ? 'The hostile Command Station citadel has been destroyed by allied fire. Enemy strategic command has collapsed!'
@@ -1443,7 +1446,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
           onClick={() => setSpectatorDismissed(false)}
           className="absolute bottom-4 right-4 z-40 px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-2xl cursor-pointer transition flex items-center gap-2 border border-amber-400/40"
         >
-          <span>{battleState.winner === 'player' ? '🏆' : '💀'}</span>
+          <span>{didPlayerWin ? '🏆' : '💀'}</span>
           <span>Open Battle Debrief</span>
         </button>
       )}

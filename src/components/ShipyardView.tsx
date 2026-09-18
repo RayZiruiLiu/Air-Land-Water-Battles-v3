@@ -959,11 +959,11 @@ export const ShipyardView: React.FC<ShipyardViewProps> = ({
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-slate-200">Convoy Protection Setup & Team Alignment</h4>
                     <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                      FIXED SIZES: 6 ESCORTS + RIG VS 4 AMBUSHERS
+                      FIXED: 8 ESCORTS + 3-VEHICLE CONVOY VS 3 AMBUSHERS
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Forces are asymmetrically balanced: the Transporting Team commands 6 combat units plus the unique armored VIP convoy semi-truck, while the Attacking Team fields 4 tactical interceptor units.
+                    The Transporting Team fields 8 heavily equipped combat escorts around a fixed front Hummer, unique armored semi-truck, and rear Hummer. The separate red Attacking Team has only 3 ambushers.
                   </p>
                 </div>
 

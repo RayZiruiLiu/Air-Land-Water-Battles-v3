@@ -33,10 +33,10 @@ export function renderBattle(
   drawOcean(ctx, state.arenaWidth, state.arenaHeight, state.time, state.mapConfig);
 
   // 2. Draw Islands / Map Landmasses
-  // Mode 2 coastal landmasses deliberately continue past an arena edge. Keep
+  // Objective-mode coastal landmasses deliberately continue past an arena edge. Keep
   // their rendered coastlines inside the playable chart.
-  const clipMode2Land = state.gameMode === 'command-station';
-  if (clipMode2Land) {
+  const clipBoundaryLand = state.gameMode === 'command-station' || state.gameMode === 'transport-protection';
+  if (clipBoundaryLand) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, state.arenaWidth, state.arenaHeight);
@@ -45,7 +45,7 @@ export function renderBattle(
   for (const island of state.islands) {
     drawIsland(ctx, island);
   }
-  if (clipMode2Land) ctx.restore();
+  if (clipBoundaryLand) ctx.restore();
 
   // 2.5 Draw Mission Objectives (Waypoints, Extraction Zone, Beachhead)
   drawMissionObjectives(ctx, state);
@@ -1243,6 +1243,7 @@ function drawLandVehicle(
   const halfW = width * 0.5;
   const chassis = vehicle.model.chassisType || 'tracked';
   const bodyStyle = vehicle.model.spriteStyle.bodyStyle || 'tank';
+  const isArticulatedSemi = bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi';
 
   // Wrecked / Destroyed vehicle visual
   if (vehicle.isSunk) {
@@ -1256,7 +1257,7 @@ function drawLandVehicle(
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.42)';
   ctx.lineWidth = 4;
   ctx.lineJoin = 'round';
-  if (bodyStyle === 'semi-sam') {
+  if (isArticulatedSemi) {
     const pivotX = halfL * 0.18;
     const relAngle = vehicle.articulatedAngle !== undefined
       ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
@@ -1332,7 +1333,7 @@ function drawLandVehicle(
   // 5. Hardpoint Weapons mounted on vehicle
   for (const hp of vehicle.model.hardpoints) {
     const compId = vehicle.config.equippedComponents[hp.id];
-    const isTrailerMount = (bodyStyle === 'semi-sam' && hp.x <= 0.18);
+    const isTrailerMount = (isArticulatedSemi && hp.x <= 0.18);
     ctx.save();
     if (isTrailerMount) {
       const pivotX = halfL * 0.18;
@@ -1351,7 +1352,7 @@ function drawLandVehicle(
 
   // 6. IFF Tactical Identification Panel at Rear (Grounded Blue vs Red)
   ctx.save();
-  if (bodyStyle === 'semi-sam') {
+  if (isArticulatedSemi) {
     const pivotX = halfL * 0.18;
     const relAngle = vehicle.articulatedAngle !== undefined
       ? normalizeAngle(vehicle.articulatedAngle - vehicle.angle)
@@ -2901,7 +2902,16 @@ function drawLandVehicleSilhouettePath(
   halfL: number,
   halfW: number
 ) {
-  if (bodyStyle === 'pickup') {
+  if (bodyStyle === 'convoy-hummer') {
+    ctx.moveTo(halfL, -halfW * 0.42);
+    ctx.lineTo(halfL * 0.72, -halfW * 0.82);
+    ctx.lineTo(-halfL * 0.72, -halfW * 0.9);
+    ctx.lineTo(-halfL, -halfW * 0.58);
+    ctx.lineTo(-halfL, halfW * 0.58);
+    ctx.lineTo(-halfL * 0.72, halfW * 0.9);
+    ctx.lineTo(halfL * 0.72, halfW * 0.82);
+    ctx.lineTo(halfL, halfW * 0.42);
+  } else if (bodyStyle === 'pickup') {
     ctx.moveTo(halfL, 0);
     ctx.lineTo(halfL * 0.95, -halfW * 0.68);
     ctx.lineTo(halfL * 0.35, -halfW * 0.75);
@@ -2989,7 +2999,7 @@ function drawLandVehicleSilhouettePath(
     ctx.lineTo(-halfL * 0.25, halfW * 0.9);
     ctx.lineTo(-halfL * 0.2, halfW * 0.78);
     ctx.lineTo(halfL * 0.8, halfW * 0.78);
-  } else if (bodyStyle === 'semi-sam') {
+  } else if (bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi') {
     // Semi-truck SAM launcher: blunt square front bumper, cab step, fifth-wheel waist, wide launcher trailer bed
     ctx.moveTo(halfL, -halfW * 0.45);
     ctx.lineTo(halfL * 0.96, -halfW * 0.75);
@@ -3215,7 +3225,26 @@ function drawVehicleBody(
   ctx.strokeStyle = '#09090b';
   ctx.lineWidth = 2.5;
 
-  if (bodyStyle === 'pickup') {
+  if (bodyStyle === 'convoy-hummer') {
+    // Purpose-built compact armored convoy Hummer: squared body, sloped hood,
+    // four doors, ballistic glazing, and a central roof weapon ring.
+    ctx.beginPath();
+    drawLandVehicleSilhouettePath(ctx, bodyStyle, halfL, halfW);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(halfL * 0.28, -halfW * 0.66, 5, halfW * 1.32);
+    ctx.fillStyle = deckColor;
+    ctx.fillRect(-halfL * 0.48, -halfW * 0.66, halfL * 0.7, halfW * 1.32);
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-halfL * 0.48, -halfW * 0.66, halfL * 0.7, halfW * 1.32);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(halfL * 0.86, -halfW * 0.55, 3, 4);
+    ctx.fillRect(halfL * 0.86, halfW * 0.55 - 4, 3, 4);
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(-halfL * 0.93, -halfW * 0.55, 4, halfW * 1.1);
+  } else if (bodyStyle === 'pickup') {
     // === PICKUP TRUCK (Technical / Armed Light Utility) ===
     // Hood & Bumper
     ctx.beginPath();
@@ -3564,7 +3593,7 @@ function drawVehicleBody(
     // Forward Right Engine Deck Grill
     ctx.fillStyle = '#18181b';
     ctx.fillRect(halfL * 0.25, -halfW * 0.65, halfL * 0.45, halfW * 0.6);
-  } else if (bodyStyle === 'semi-sam') {
+  } else if (bodyStyle === 'semi-sam' || bodyStyle === 'convoy-semi') {
     // === PATRIOT MOBILE SAM ARTICULATED SEMI-TRUCK ===
     // 1. Tractor Unit (Cab-over military tractor with authentic truck front)
     ctx.beginPath();
@@ -3661,16 +3690,33 @@ function drawVehicleBody(
     ctx.fill();
     ctx.stroke();
 
-    // Launcher Trailer Deck Diamond-Plate Tread
-    ctx.fillStyle = deckColor;
-    ctx.fillRect(-halfL * 0.92, -halfW * 0.85, halfL * 1.0, halfW * 1.7);
-    ctx.strokeStyle = '#3f3f46';
-    ctx.lineWidth = 1;
-    for (let tx = -halfL * 0.85; tx < halfL * 0.05; tx += 12) {
-      ctx.beginPath();
-      ctx.moveTo(tx, -halfW * 0.8);
-      ctx.lineTo(tx, halfW * 0.8);
-      ctx.stroke();
+    if (bodyStyle === 'convoy-semi') {
+      // Long armored cargo container with ribs, locking bars, and a unique
+      // high-visibility convoy chevron at the rear.
+      ctx.fillStyle = deckColor;
+      ctx.fillRect(-halfL * 0.91, -halfW * 0.78, halfL * 0.98, halfW * 1.56);
+      ctx.strokeStyle = accentColor;
+      ctx.lineWidth = 1.4;
+      for (let tx = -halfL * 0.82; tx < 0; tx += 10) {
+        ctx.beginPath();
+        ctx.moveTo(tx, -halfW * 0.74);
+        ctx.lineTo(tx, halfW * 0.74);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(-halfL * 0.9, -1.5, halfL * 0.94, 3);
+    } else {
+      // Launcher Trailer Deck Diamond-Plate Tread
+      ctx.fillStyle = deckColor;
+      ctx.fillRect(-halfL * 0.92, -halfW * 0.85, halfL * 1.0, halfW * 1.7);
+      ctx.strokeStyle = '#3f3f46';
+      ctx.lineWidth = 1;
+      for (let tx = -halfL * 0.85; tx < halfL * 0.05; tx += 12) {
+        ctx.beginPath();
+        ctx.moveTo(tx, -halfW * 0.8);
+        ctx.lineTo(tx, halfW * 0.8);
+        ctx.stroke();
+      }
     }
 
     // Rear Hazard Striping & Mudflaps
@@ -3786,7 +3832,15 @@ function drawVehicleSuperstructure(
   accentColor: string,
   vehicle?: ShipEntity
 ) {
-  if (bodyStyle === 'pickup') {
+  if (bodyStyle === 'convoy-hummer') {
+    ctx.fillStyle = '#111827';
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(-halfL * 0.05, 0, Math.min(9, halfW * 0.55), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (bodyStyle === 'pickup') {
     // Tubular Bed Rollbar & Pedestal Mount
     ctx.strokeStyle = '#3f3f46';
     ctx.lineWidth = 2.5;
@@ -3899,6 +3953,9 @@ function drawVehicleSuperstructure(
     ctx.beginPath();
     ctx.arc(turretX - 3, -turretRadius * 0.35, 4.5, 0, Math.PI * 2);
     ctx.fill();
+  } else if (bodyStyle === 'convoy-semi') {
+    // The cargo rig carries no SAM launcher; its hardpoints render as compact
+    // defensive mounts over the articulated armored trailer.
   } else if (bodyStyle === 'semi-sam') {
     // Mobile SAM Turntable & Dual Missile Canister Launch Pack
     const pivotX = halfL * 0.18;
@@ -4421,7 +4478,7 @@ function drawVehicleOverheadHUD(ctx: CanvasRenderingContext2D, ship: ShipEntity)
   ctx.font = 'bold 9px monospace';
   ctx.fillStyle = ship.team === 'player' ? '#93c5fd' : '#fca5a5';
   ctx.fillText(
-    `[${role.toUpperCase()}]${ship.towedTrailer ? ` + ${ship.towedTrailer.def.name.toUpperCase()}` : ''}`,
+    `${ship.isPlayer && ship.team === 'enemy' ? '[RED TEAM] ' : ''}[${role.toUpperCase()}]${ship.towedTrailer ? ` + ${ship.towedTrailer.def.name.toUpperCase()}` : ''}`,
     ship.x,
     hudY - 3
   );

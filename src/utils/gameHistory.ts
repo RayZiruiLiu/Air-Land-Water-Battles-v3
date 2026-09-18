@@ -359,7 +359,7 @@ export function createGameRecordFromBattle(
   const model = SHIP_MODEL_MAP.get(playerConfig.baseModelId) || playerShip?.model;
   const mapConfig = state.mapConfig || BATTLE_MAP_MAP.get(settings.selectedMapId);
 
-  const result: 'victory' | 'defeat' = state.winner === 'player' ? 'victory' : 'defeat';
+  const result: 'victory' | 'defeat' = state.winner === (playerShip?.team || 'player') ? 'victory' : 'defeat';
   const survived = playerShip ? !playerShip.isSunk : false;
 
   const damageDealt = state.stats.damageDealt || 0;
@@ -390,9 +390,10 @@ export function createGameRecordFromBattle(
   }
 
   // Allied & enemy counts
-  const alliedShips = state.ships.filter(s => s.team === 'player' && !s.isDocked);
+  const playerTeam = playerShip?.team || 'player';
+  const alliedShips = state.ships.filter(s => s.team === playerTeam && !s.isDocked);
   const alliedRemaining = alliedShips.filter(s => !s.isSunk).length;
-  const enemyShips = state.ships.filter(s => s.team === 'enemy' && !s.isDocked);
+  const enemyShips = state.ships.filter(s => s.team !== playerTeam && !s.isDocked);
   const enemyRemaining = enemyShips.filter(s => !s.isSunk).length;
 
   // Extract top highlights from combat log

@@ -41,6 +41,8 @@ export type VehicleBodyStyle =
   | 'car'
   | 'flatbed'
   | 'semi-sam'
+  | 'convoy-semi'
+  | 'convoy-hummer'
   | 'heavy-tel'
   | 'buggy'
   | 'halftrack'
@@ -362,6 +364,7 @@ export interface ShipEntity {
 
   // Mode 3 VIP Convoy Truck properties
   isConvoyTruck?: boolean;
+  convoyEscortPosition?: 'front' | 'rear';
   convoyColorPattern?: 'woodland' | 'olivedrab' | 'black' | 'desert' | 'navy';
 }
 
@@ -581,6 +584,8 @@ export interface CommandStationEntity {
 
 export interface TransportMissionState {
   truckShipId: string;
+  frontHummerShipId: string;
+  rearHummerShipId: string;
   waypoints: { x: number; y: number }[];
   currentWaypointIndex: number;
   destination: { x: number; y: number; radius: number };

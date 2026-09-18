@@ -170,6 +170,22 @@ export class BattleEngine {
       ...islands.map(i => i.points),
       ...bridges.map(b => b.points),
     ];
+    const gameMode: GameMode = mapConfig.gameMode || this.settings.gameMode || 'fleet-battle';
+    const playerRole: PlayerMissionRole = this.settings.playerRole || (gameMode === 'transport-protection' ? 'defender' : 'attacker');
+    const isTransportProtection = gameMode === 'transport-protection';
+    // Mode 3 uses stable faction colors: the convoy is always blue and the
+    // ambush force is always red. Selecting the ambush role therefore really
+    // places the player on the red team and at its separate eastern spawn.
+    const playerFactionTeam: Team = isTransportProtection && playerRole === 'attacker' ? 'enemy' : 'player';
+    const opposingFactionTeam: Team = playerFactionTeam === 'player' ? 'enemy' : 'player';
+    const transportingCombatCount = 8;
+    const attackingCombatCount = 3;
+    const playerFactionCount = isTransportProtection
+      ? (playerFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
+      : shipsPerTeam;
+    const opposingFactionCount = isTransportProtection
+      ? (opposingFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
+      : shipsPerTeam;
 
     const ships: ShipEntity[] = [];
     const occupiedSpawns: { x: number; y: number }[] = [];
@@ -330,19 +346,19 @@ export class BattleEngine {
     }
     const initialPlayerMode: VehicleWeaponMode = (!playerHasSurface && playerHasAir) ? 'air' : 'surface';
 
-    const playerSpawn = getSafeSpawn('player', playerModel.domain || 'land', 0);
+    const playerSpawn = getSafeSpawn(playerFactionTeam, playerModel.domain || 'land', 0);
 
     const playerShip: ShipEntity = {
       id: 'player-flagship',
       name: playerConfig.name || 'Flagship Vanguard',
-      team: 'player',
+      team: playerFactionTeam,
       isPlayer: true,
       model: playerModel,
       config: playerConfig,
       stats: playerStats,
       x: playerSpawn.x,
       y: playerSpawn.y,
-      angle: 0, // facing right toward center
+      angle: playerFactionTeam === 'player' ? 0 : Math.PI,
       vx: 0,
       vy: 0,
       speed: 0,
@@ -356,7 +372,7 @@ export class BattleEngine {
       idleTimer: 0,
       fireTimer: 0,
       cooldowns: {},
-      tacticalRole: 'attacker',
+      tacticalRole: isTransportProtection && playerFactionTeam === 'player' ? 'defender' : 'attacker',
       domain: playerModel.domain || 'land',
       altitude: playerModel.domain === 'air' ? 65 : 0,
       weaponTargetMode: initialPlayerMode,
@@ -367,23 +383,29 @@ export class BattleEngine {
     initShipAircraftCapabilities(playerShip);
     ships.push(playerShip);
 
-    // Pre-calculate session-wide balanced match plan so BOTH teams have the exact same count
-    // of land vehicles, combat aircraft, and naval warships, dynamically shuffled per session.
-    const matchPlan = getBalancedMatchPlan(shipsPerTeam, playerModel.domain || 'land', this.matchSeed);
+    // Pre-calculate a session-wide domain plan. Standard modes remain evenly
+    // matched; Mode 3 deliberately consumes different force sizes.
+    const matchPlan = getBalancedMatchPlan(Math.max(playerFactionCount, opposingFactionCount), playerModel.domain || 'land', this.matchSeed);
+    // The first plan excludes the human slot; the second is a full NPC force.
+    // Keep those cardinalities even when the human selected the red faction.
+    const playerNpcDomains = matchPlan.allyNpcDomains;
+    const opposingNpcDomains = matchPlan.enemyNpcDomains;
 
     // 2. Create Allied NPC vehicles (Omega Team) with session randomized fleet composition
-    for (let i = 1; i < shipsPerTeam; i++) {
-      const assignedDomain = matchPlan.allyNpcDomains[i - 1];
+    for (let i = 1; i < playerFactionCount; i++) {
+      const assignedDomain = playerNpcDomains[i - 1];
       const { model, config } = generateNpcShipConfig(
         i,
-        'player',
-        shipsPerTeam,
+        playerFactionTeam,
+        playerFactionCount,
         playerModel.domain || 'land',
         this.matchSeed,
         assignedDomain
       );
       const stats = calculateShipStats(model, config);
-      const role: 'defender' | 'attacker' | 'skirmisher' = (i === 1) ? 'defender' : (i === 2 ? 'attacker' : 'skirmisher');
+      const role: 'defender' | 'attacker' | 'skirmisher' = isTransportProtection && playerFactionTeam === 'player'
+        ? (i < 4 ? 'defender' : 'skirmisher')
+        : ((i === 1) ? 'defender' : (i === 2 ? 'attacker' : 'skirmisher'));
 
       // Check NPC weapon capabilities
       let npcHasSurface = false;
@@ -396,25 +418,25 @@ export class BattleEngine {
         if (comp.targetDomain === 'air' || comp.targetDomain === 'both') npcHasAir = true;
       }
 
-      const allySpawn = getSafeSpawn('player', model.domain || 'land', i);
+      const allySpawn = getSafeSpawn(playerFactionTeam, model.domain || 'land', i);
 
       const npcShip: ShipEntity = {
         id: `allied-npc-${i}`,
         name: config.name,
-        team: 'player',
+        team: playerFactionTeam,
         isPlayer: false,
         model,
         config,
         stats,
         x: allySpawn.x,
         y: allySpawn.y,
-        angle: 0,
+        angle: playerFactionTeam === 'player' ? 0 : Math.PI,
         vx: 0,
         vy: 0,
         speed: 0,
         targetSpeedLevel: 2,
         rudderAngle: 0,
-        articulatedAngle: 0,
+        articulatedAngle: playerFactionTeam === 'player' ? 0 : Math.PI,
         currentHp: stats.maxHp,
         maxHp: stats.maxHp,
         isSunk: false,
@@ -437,12 +459,12 @@ export class BattleEngine {
     }
 
     // 3. Create Hostile Enemy NPC vehicles (Alpha Team) with session randomized composition
-    for (let i = 0; i < shipsPerTeam; i++) {
-      const assignedDomain = matchPlan.enemyNpcDomains[i];
+    for (let i = 0; i < opposingFactionCount; i++) {
+      const assignedDomain = opposingNpcDomains[i];
       const { model, config } = generateNpcShipConfig(
         i,
-        'enemy',
-        shipsPerTeam,
+        opposingFactionTeam,
+        opposingFactionCount,
         playerModel.domain || 'land',
         this.matchSeed,
         assignedDomain
@@ -450,10 +472,10 @@ export class BattleEngine {
       const stats = calculateShipStats(model, config);
 
       // Balanced combat roles matching allied force
-      let role: 'attacker' | 'defender' | 'skirmisher' = 'attacker';
-      if (i === 1) role = 'defender';
+      let role: 'attacker' | 'defender' | 'skirmisher' = isTransportProtection && opposingFactionTeam === 'player' ? 'defender' : 'attacker';
+      if (!isTransportProtection && i === 1) role = 'defender';
       else if (i === 3) role = 'skirmisher';
-      else role = 'attacker';
+      else if (!isTransportProtection) role = 'attacker';
 
       let npcHasSurface = false;
       let npcHasAir = false;
@@ -465,25 +487,25 @@ export class BattleEngine {
         if (comp.targetDomain === 'air' || comp.targetDomain === 'both') npcHasAir = true;
       }
 
-      const enemySpawn = getSafeSpawn('enemy', model.domain || 'land', i);
+      const enemySpawn = getSafeSpawn(opposingFactionTeam, model.domain || 'land', i);
 
       const enemyShip: ShipEntity = {
         id: `enemy-npc-${i}`,
         name: config.name,
-        team: 'enemy',
+        team: opposingFactionTeam,
         isPlayer: false,
         model,
         config,
         stats,
         x: enemySpawn.x,
         y: enemySpawn.y,
-        angle: Math.PI, // facing left toward player fleet
+        angle: opposingFactionTeam === 'player' ? 0 : Math.PI,
         vx: 0,
         vy: 0,
         speed: 0,
         targetSpeedLevel: 2,
         rudderAngle: 0,
-        articulatedAngle: Math.PI,
+        articulatedAngle: opposingFactionTeam === 'player' ? 0 : Math.PI,
         currentHp: stats.maxHp,
         maxHp: stats.maxHp,
         isSunk: false,
@@ -505,9 +527,6 @@ export class BattleEngine {
       ships.push(enemyShip);
     }
 
-    const gameMode: GameMode = mapConfig.gameMode || this.settings.gameMode || 'fleet-battle';
-    const playerRole: PlayerMissionRole = this.settings.playerRole || (gameMode === 'transport-protection' ? 'defender' : 'attacker');
-
     let commandStations: CommandStationEntity[] | undefined = undefined;
     let defensiveWeapons: DefensiveWeaponEntity[] | undefined = undefined;
     let transportMission: TransportMissionState | undefined = undefined;
@@ -519,8 +538,8 @@ export class BattleEngine {
 
       // Command stations must withstand a prolonged coordinated siege, while
       // their separate defensive emplacements receive a smaller durability bump.
-      const baseStationHp = 6000;
-      const defenseHpScale = 1.25;
+      const baseStationHp = 24000;
+      const defenseHpScale = 1.35;
 
       const playerStation: CommandStationEntity = {
         id: 'cs-player-hq',
@@ -602,13 +621,13 @@ export class BattleEngine {
 
       defensiveWeapons = [...playerWeapons, ...enemyWeapons];
     } else if (gameMode === 'transport-protection') {
-      const escortTeam: Team = playerRole === 'defender' ? 'player' : 'enemy';
+      const escortTeam: Team = 'player';
       const defaultWaypoints = [
-        { x: arenaWidth * 0.12, y: arenaHeight * 0.5 },
+        { x: -140, y: arenaHeight * 0.5 },
         { x: arenaWidth * 0.32, y: arenaHeight * 0.38 },
         { x: arenaWidth * 0.52, y: arenaHeight * 0.62 },
         { x: arenaWidth * 0.72, y: arenaHeight * 0.42 },
-        { x: arenaWidth * 0.88, y: arenaHeight * 0.5 },
+        { x: arenaWidth + 140, y: arenaHeight * 0.5 },
       ];
       const waypoints = (mapConfig.convoyWaypoints && mapConfig.convoyWaypoints.length > 0)
         ? [...mapConfig.convoyWaypoints]
@@ -620,13 +639,24 @@ export class BattleEngine {
         label: 'EXTRACTION ZONE',
       };
 
-      const startPos = waypoints[0];
-      const truckModel = SHIP_MODEL_MAP.get('truck-flatbed-6x6') || BASE_SHIPS.find(s => s.domain === 'land') || BASE_SHIPS[0];
+      // Route geometry begins off-chart, but the physical three-vehicle
+      // formation stages just inside the western boundary so its order is not
+      // collapsed by arena collision handling on the first simulation tick.
+      const startPos = { ...waypoints[0], x: Math.max(250, waypoints[0].x) };
+      const truckModel = SHIP_MODEL_MAP.get('vip-convoy-semi-truck') || BASE_SHIPS.find(s => s.domain === 'land') || BASE_SHIPS[0];
+      const convoyPalettes = [
+        { name: 'Woodland Camouflage', pattern: 'woodland' as const, primary: '#3f4a32', accent: '#20291d' },
+        { name: 'Olive Drab', pattern: 'olivedrab' as const, primary: '#4b5320', accent: '#292f16' },
+        { name: 'Night Black', pattern: 'black' as const, primary: '#20252a', accent: '#080a0c' },
+        { name: 'Desert Field', pattern: 'desert' as const, primary: '#8a7b58', accent: '#4b4430' },
+        { name: 'Naval Slate', pattern: 'navy' as const, primary: '#293b49', accent: '#111c25' },
+      ];
+      const convoyPalette = convoyPalettes[Math.abs(this.matchSeed) % convoyPalettes.length];
       const truckConfig: CustomShipConfig = {
-        name: escortTeam === 'player' ? 'Allied Armored Cargo Rig' : 'Hostile Armored Cargo Rig',
+        name: 'Allied Armored Convoy Semi',
         baseModelId: truckModel.id,
-        primaryColor: escortTeam === 'player' ? '#f59e0b' : '#e11d48',
-        accentColor: '#fbbf24',
+        primaryColor: convoyPalette.primary,
+        accentColor: convoyPalette.accent,
         equippedComponents: {},
       };
       truckModel.hardpoints.forEach(hp => {
@@ -639,7 +669,7 @@ export class BattleEngine {
 
       const vipTruck: ShipEntity = {
         id: 'convoy-vip-truck',
-        name: escortTeam === 'player' ? 'Allied Armored Cargo Rig' : 'Hostile Armored Cargo Rig',
+        name: 'Allied Armored Convoy Semi',
         team: escortTeam,
         x: startPos.x,
         y: startPos.y,
@@ -674,12 +704,69 @@ export class BattleEngine {
         weaponTargetMode: 'surface',
         hasSurfaceWeapons: true,
         hasAirWeapons: false,
+        isConvoyTruck: true,
+        convoyColorPattern: convoyPalette.pattern,
       };
       vipTruck.towedTrailer = initVehicleTrailer(vipTruck);
       ships.push(vipTruck);
 
+      const hummerModel = SHIP_MODEL_MAP.get('mode3-convoy-gun-hummer') || BASE_SHIPS.find(s => s.domain === 'land') || BASE_SHIPS[0];
+      const makeConvoyHummer = (position: 'front' | 'rear'): ShipEntity => {
+        const offset = position === 'front' ? 155 : -155;
+        const config: CustomShipConfig = {
+          name: position === 'front' ? 'Convoy Vanguard Hummer' : 'Convoy Rearguard Hummer',
+          baseModelId: hummerModel.id,
+          primaryColor: convoyPalette.primary,
+          accentColor: convoyPalette.accent,
+          equippedComponents: {},
+        };
+        hummerModel.hardpoints.forEach(hp => {
+          if (hp.defaultComponentId) config.equippedComponents[hp.id] = hp.defaultComponentId;
+        });
+        const stats = calculateShipStats(hummerModel, config);
+        return {
+          id: `convoy-${position}-hummer`,
+          name: config.name,
+          team: escortTeam,
+          x: startPos.x + Math.cos(initialAngle) * offset,
+          y: startPos.y + Math.sin(initialAngle) * offset,
+          vx: 0,
+          vy: 0,
+          angle: initialAngle,
+          rudderAngle: 0,
+          targetRudderAngle: 0,
+          speed: 0,
+          targetSpeedLevel: 1,
+          currentHp: stats.maxHp,
+          maxHp: stats.maxHp,
+          isSunk: false,
+          sinkProgress: 0,
+          isPlayer: false,
+          model: hummerModel,
+          config,
+          stats,
+          cooldowns: {},
+          idleTimer: 0,
+          fireTimer: 0,
+          aiState: 'defend',
+          aiDecisionTimer: 0.3,
+          tacticalRole: 'defender',
+          domain: 'land',
+          altitude: 0,
+          weaponTargetMode: 'surface',
+          hasSurfaceWeapons: true,
+          hasAirWeapons: false,
+          convoyEscortPosition: position,
+        };
+      };
+      const frontHummer = makeConvoyHummer('front');
+      const rearHummer = makeConvoyHummer('rear');
+      ships.push(frontHummer, rearHummer);
+
       transportMission = {
         truckShipId: vipTruck.id,
+        frontHummerShipId: frontHummer.id,
+        rearHummerShipId: rearHummer.id,
         waypoints,
         currentWaypointIndex: 1,
         destination,
@@ -687,6 +774,7 @@ export class BattleEngine {
         isTruckDestroyed: false,
         progressPercent: 0,
         distanceRemaining: Math.round(Math.hypot(destination.x - startPos.x, destination.y - startPos.y)),
+        colorSchemeName: convoyPalette.name,
       };
     } else if (gameMode === 'amphibious-assault') {
       const attackerTeam: Team = playerRole === 'attacker' ? 'player' : 'enemy';
@@ -832,7 +920,7 @@ export class BattleEngine {
           id: 'log-0',
           text: initialLogMessage,
           time: 0,
-          team: 'player',
+          team: playerFactionTeam,
         },
       ],
       stats: {
@@ -1434,7 +1522,8 @@ export class BattleEngine {
     if (this.settings.autoFire) {
       const player = this.getPlayerShip();
       if (player && !player.isSunk) {
-        const enemies = this.state.ships.filter(s => s.team === 'enemy' && !s.isSunk);
+        const hostileTeam: Team = player.team === 'player' ? 'enemy' : 'player';
+        const enemies = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk);
         let nearest: ShipEntity | null = null;
         let minDist = Infinity;
         const targetMode = player.weaponTargetMode || 'surface';
@@ -1648,6 +1737,25 @@ export class BattleEngine {
     const angleDiff = this.normalizeAngle(targetAngle - truck.angle);
     truck.targetRudderAngle = Math.max(-1, Math.min(1, angleDiff * 2.5));
     truck.targetSpeedLevel = 1; // steady cruise speed
+
+    // The armed Hummers are permanent convoy bookends. They retain normal AI
+    // weapon use, while their movement is continuously pulled back into a
+    // front/semi/rear formation after each AI decision.
+    const steerFormationEscort = (shipId: string, offset: number) => {
+      const escort = this.state.ships.find(s => s.id === shipId);
+      if (!escort || escort.isSunk) return;
+      const desiredX = truck.x + Math.cos(truck.angle) * offset;
+      const desiredY = truck.y + Math.sin(truck.angle) * offset;
+      const dx = desiredX - escort.x;
+      const dy = desiredY - escort.y;
+      const distance = Math.hypot(dx, dy);
+      const desiredAngle = Math.atan2(dy, dx);
+      const escortAngleDiff = this.normalizeAngle(desiredAngle - escort.angle);
+      escort.targetRudderAngle = Math.max(-1, Math.min(1, escortAngleDiff * 2.8));
+      escort.targetSpeedLevel = distance > 260 ? 3 : distance > 105 ? 2 : distance < 55 ? 0 : 1;
+    };
+    steerFormationEscort(tm.frontHummerShipId, 155);
+    steerFormationEscort(tm.rearHummerShipId, -155);
 
     // Check distance to destination extraction zone
     const distToDest = Math.hypot(tm.destination.x - truck.x, tm.destination.y - truck.y);
@@ -1872,7 +1980,7 @@ export class BattleEngine {
 
       if (tm.reachedDestination) {
         this.state.gameOver = true;
-        this.state.winner = isPlayerDefender ? 'player' : 'enemy';
+        this.state.winner = 'player';
         this.state.winReason = 'transport_delivered';
         if (isPlayerDefender) {
           sounds.playVictory();
@@ -1886,7 +1994,7 @@ export class BattleEngine {
 
       if (tm.isTruckDestroyed) {
         this.state.gameOver = true;
-        this.state.winner = isPlayerDefender ? 'enemy' : 'player';
+        this.state.winner = 'enemy';
         this.state.winReason = 'transport_destroyed';
         if (isPlayerDefender) {
           sounds.playDefeat();
@@ -2134,7 +2242,7 @@ export class BattleEngine {
     ship.angle = this.normalizeAngle(ship.angle);
 
     // Articulated joint physics for semi-truck (tractor cab + missile trailer)
-    if (ship.model.spriteStyle.bodyStyle === 'semi-sam') {
+    if (ship.model.spriteStyle.bodyStyle === 'semi-sam' || ship.model.spriteStyle.bodyStyle === 'convoy-semi') {
       if (ship.articulatedAngle === undefined) {
         ship.articulatedAngle = ship.angle;
       }

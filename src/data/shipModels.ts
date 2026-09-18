@@ -1127,7 +1127,7 @@ export const CONVOY_SEMI_TRUCK_MODEL: BaseShipModel = {
   domain: 'land',
   hullClass: 'TRUCK',
   combatRole: 'support-tow',
-  chassisType: 'truck-flatbed',
+  chassisType: 'semi-truck',
   canTowTrailer: false,
   description: 'Heavy 18-wheel armored prime mover tractor with articulated container semi-trailer, reinforced ballistic cabin, and dual fuel tanks.',
   hullLength: 124,
@@ -1143,7 +1143,7 @@ export const CONVOY_SEMI_TRUCK_MODEL: BaseShipModel = {
   ],
   svgHullPath: 'M 62,-16 L 62,16 L -62,16 L -62,-16 Z',
   spriteStyle: {
-    bodyStyle: 'flatbed',
+    bodyStyle: 'convoy-semi',
     deckColor: '#3d4737',
     hullColor: '#4d5334',
     accentColor: '#363b25',
@@ -1153,8 +1153,41 @@ export const CONVOY_SEMI_TRUCK_MODEL: BaseShipModel = {
   },
 };
 
+// Exclusive armed formation vehicles for Mode 3. Kept out of BASE_SHIPS so
+// they cannot be selected as ordinary player vehicles in the Motor Pool.
+export const CONVOY_HUMMER_MODEL: BaseShipModel = {
+  id: 'mode3-convoy-gun-hummer',
+  name: 'Convoy Gun Hummer',
+  type: 'Armored Escort Utility Vehicle',
+  domain: 'land',
+  hullClass: 'HMMWV',
+  combatRole: 'close-combat',
+  chassisType: 'wheeled-4x4',
+  canTowTrailer: false,
+  description: 'Compact armored Hummer assigned permanently to the front or rear of the protected convoy.',
+  hullLength: 60,
+  hullWidth: 29,
+  baseHp: 1050,
+  baseSpeed: 78,
+  baseTurnRate: 1.75,
+  baseArmor: 22,
+  hardpoints: [
+    { id: 'hp-roof-gun', name: 'Roof Defense Gun', x: 0.02, y: 0, allowedArc: 'all', defaultComponentId: 'm134-minigun' },
+  ],
+  svgHullPath: 'M 30,-12 L 24,-14 L -25,-14 L -30,-9 L -30,9 L -25,14 L 24,14 L 30,12 Z',
+  spriteStyle: {
+    bodyStyle: 'convoy-hummer',
+    deckColor: '#30372b',
+    hullColor: '#4b5320',
+    accentColor: '#252b1c',
+    details: '#111827',
+    wheelCount: 4,
+    camoPattern: 'camo',
+  },
+};
+
 const BASE_SHIP_MAP = new Map<string, BaseShipModel>(
-  [...BASE_SHIPS, CONVOY_SEMI_TRUCK_MODEL].map(m => [m.id, m])
+  [...BASE_SHIPS, CONVOY_SEMI_TRUCK_MODEL, CONVOY_HUMMER_MODEL].map(m => [m.id, m])
 );
 
 export const SHIP_MODEL_MAP = {
