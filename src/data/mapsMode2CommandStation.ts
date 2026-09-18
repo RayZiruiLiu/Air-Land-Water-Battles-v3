@@ -605,7 +605,7 @@ const BALTIC_BRIDGES = [
 // ===========================================================================
 // EXPORTED MODE 2 MAP CONFIGURATIONS
 // ===========================================================================
-export const MODE_2_MAPS: BattleMapConfig[] = [
+const BASE_MODE_2_MAPS: BattleMapConfig[] = [
   {
     id: 'mode2-mediterranean-bastion',
     name: 'Straits of Gibraltar: Command Headlands',
@@ -985,3 +985,137 @@ export const MODE_2_MAPS: BattleMapConfig[] = [
     bridges: BALTIC_BRIDGES,
   },
 ];
+
+const ORIGINAL_WIDTH = 4800;
+const ORIGINAL_HEIGHT = 3200;
+const HORIZONTAL_EXPANSION = 500;
+const VERTICAL_EXPANSION = 400;
+
+const expandMode2Map = (map: BattleMapConfig, mapIndex: number): BattleMapConfig => {
+  const width = ORIGINAL_WIDTH + HORIZONTAL_EXPANSION * 2;
+  const height = ORIGINAL_HEIGHT + VERTICAL_EXPANSION * 2;
+  const translatePoint = (point: { x: number; y: number }) => ({
+    x: point.x + HORIZONTAL_EXPANSION,
+    y: point.y + VERTICAL_EXPANSION,
+  });
+  const expandBoundaryPoint = (point: { x: number; y: number }) => ({
+    x: point.x <= 0
+      ? point.x
+      : point.x >= ORIGINAL_WIDTH
+        ? point.x + HORIZONTAL_EXPANSION * 2
+        : point.x + HORIZONTAL_EXPANSION,
+    y: point.y <= 0
+      ? point.y
+      : point.y >= ORIGINAL_HEIGHT
+        ? point.y + VERTICAL_EXPANSION * 2
+        : point.y + VERTICAL_EXPANSION,
+  });
+
+  const obstacles = map.obstacles.map(island => ({
+    ...island,
+    ...translatePoint(island),
+    points: island.points.map(expandBoundaryPoint),
+    foliage: island.foliage.map(feature => ({ ...feature, ...translatePoint(feature) })),
+    lake: island.lake
+      ? {
+        ...island.lake,
+        ...translatePoint(island.lake),
+        points: island.lake.points?.map(translatePoint),
+      }
+      : undefined,
+    lakes: island.lakes?.map(lake => ({
+      ...lake,
+      ...translatePoint(lake),
+      points: lake.points?.map(translatePoint),
+    })),
+    canals: island.canals?.map(canal => ({
+      ...canal,
+      x1: canal.x1 + HORIZONTAL_EXPANSION,
+      y1: canal.y1 + VERTICAL_EXPANSION,
+      x2: canal.x2 + HORIZONTAL_EXPANSION,
+      y2: canal.y2 + VERTICAL_EXPANSION,
+      points: canal.points?.map(translatePoint),
+    })),
+  }));
+
+  const chooseOuterIsland = (bandY: number, seedOffset: number, label: string) => {
+    const candidates = [0.22, 0.34, 0.47, 0.61, 0.74, 0.84].map(fraction => ({ x: width * fraction, y: bandY }));
+    const location = candidates.reduce<{ x: number; y: number; clearance: number }>((best, candidate) => {
+      const clearance = Math.min(...obstacles.map(island =>
+        Math.hypot(candidate.x - island.x, candidate.y - island.y) - island.radius * 0.72
+      ));
+      return clearance > best.clearance ? { ...candidate, clearance } : best;
+    }, { ...candidates[0], clearance: -Infinity });
+    return createIslandEx({
+      x: Math.round(location.x),
+      y: Math.round(location.y),
+      rx: label === 'North' ? 250 : 285,
+      ry: label === 'North' ? 165 : 185,
+      shape: label === 'North' ? 'skerry' : 'natural',
+      style: map.islandStyle,
+      seed: 80 + mapIndex * 7.3 + seedOffset,
+      name: `${label} Outer Approach`,
+    });
+  };
+
+  const northIsland = chooseOuterIsland(165, 1.1, 'North');
+  const southIsland = chooseOuterIsland(height - 170, 4.7, 'South');
+  const outerIslands = [northIsland, southIsland];
+  const bridgeStyle = map.bridges?.[0]?.style || 'concrete-highway';
+  const outerBridges = outerIslands.map((island, index) => {
+    const connectedIsland = obstacles.reduce((nearest, candidate) =>
+      Math.hypot(candidate.x - island.x, candidate.y - island.y)
+        < Math.hypot(nearest.x - island.x, nearest.y - island.y)
+        ? candidate
+        : nearest
+    );
+    return connectIslands(
+      `${map.id}-outer-${index + 1}`,
+      `${island.name} Link`,
+      island,
+      connectedIsland,
+      115 + index * 5,
+      bridgeStyle
+    );
+  });
+
+  const translateStation = (station: NonNullable<BattleMapConfig['commandStationPositions']>['player']) => ({
+    ...station,
+    ...translatePoint(station),
+    defensiveWeapons: station.defensiveWeapons?.map(weapon => ({ ...weapon, ...translatePoint(weapon) })),
+  });
+
+  return {
+    ...map,
+    dimensions: { width, height },
+    obstacles: [...obstacles, ...outerIslands],
+    bridges: [
+      ...(map.bridges || []).map(bridge => ({
+        ...bridge,
+        x1: bridge.x1 + HORIZONTAL_EXPANSION,
+        y1: bridge.y1 + VERTICAL_EXPANSION,
+        x2: bridge.x2 + HORIZONTAL_EXPANSION,
+        y2: bridge.y2 + VERTICAL_EXPANSION,
+        points: bridge.points.map(translatePoint),
+      })),
+      ...outerBridges,
+    ],
+    roads: map.roads?.map(road => ({ ...road, points: road.points.map(translatePoint) })),
+    spawnPoints: map.spawnPoints
+      ? {
+        playerLand: map.spawnPoints.playerLand.map(translatePoint),
+        playerWater: map.spawnPoints.playerWater.map(translatePoint),
+        enemyLand: map.spawnPoints.enemyLand.map(translatePoint),
+        enemyWater: map.spawnPoints.enemyWater.map(translatePoint),
+      }
+      : undefined,
+    commandStationPositions: map.commandStationPositions
+      ? {
+        player: translateStation(map.commandStationPositions.player),
+        enemy: translateStation(map.commandStationPositions.enemy),
+      }
+      : undefined,
+  };
+};
+
+export const MODE_2_MAPS: BattleMapConfig[] = BASE_MODE_2_MAPS.map(expandMode2Map);

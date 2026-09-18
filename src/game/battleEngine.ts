@@ -178,8 +178,8 @@ export class BattleEngine {
     // places the player on the red team and at its separate eastern spawn.
     const playerFactionTeam: Team = isTransportProtection && playerRole === 'attacker' ? 'enemy' : 'player';
     const opposingFactionTeam: Team = playerFactionTeam === 'player' ? 'enemy' : 'player';
-    const transportingCombatCount = 5;
-    const attackingCombatCount = 5;
+    const transportingCombatCount = 3;
+    const attackingCombatCount = 6;
     const playerFactionCount = isTransportProtection
       ? (playerFactionTeam === 'player' ? transportingCombatCount : attackingCombatCount)
       : shipsPerTeam;
@@ -383,13 +383,41 @@ export class BattleEngine {
     initShipAircraftCapabilities(playerShip);
     ships.push(playerShip);
 
-    // Pre-calculate a session-wide domain plan. Mode 3 uses five combatants on
-    // each side; its three fixed convoy vehicles are created separately below.
+    // Pre-calculate a session-wide domain plan. Mode 3's three fixed convoy
+    // vehicles are created separately from its 3-person escort and 6 attackers.
     const matchPlan = getBalancedMatchPlan(Math.max(playerFactionCount, opposingFactionCount), playerModel.domain || 'land', this.matchSeed);
     // The first plan excludes the human slot; the second is a full NPC force.
     // Keep those cardinalities even when the human selected the red faction.
     const playerNpcDomains = matchPlan.allyNpcDomains;
     const opposingNpcDomains = matchPlan.enemyNpcDomains;
+
+    const selectNpcRole = (
+      team: Team,
+      slot: number,
+      domain: VehicleDomain,
+      combatRole: string | undefined,
+      speed: number,
+      armorRating: number,
+      hasSurfaceWeapons: boolean
+    ): 'attacker' | 'defender' | 'skirmisher' => {
+      if (isTransportProtection) {
+        if (team === 'player') return slot % 2 === 0 ? 'defender' : 'skirmisher';
+        return slot % 3 === 1 ? 'skirmisher' : 'attacker';
+      }
+
+      const formationRole: 'attacker' | 'defender' | 'skirmisher' =
+        slot % 3 === 0 ? 'defender' : slot % 3 === 1 ? 'skirmisher' : 'attacker';
+      if (gameMode !== 'command-station') return formationRole;
+
+      // Keep a mixed formation while allowing each platform's strengths to
+      // refine its tendency within that formation.
+      if (!hasSurfaceWeapons || combatRole === 'support-tow') return 'defender';
+      if (formationRole === 'skirmisher' && slot % 6 === 4
+        && (combatRole === 'heavy-artillery' || armorRating >= 48)) return 'attacker';
+      if (formationRole === 'attacker' && slot % 6 === 5
+        && (combatRole === 'recon-skirmisher' || (domain === 'air' && speed >= 100))) return 'skirmisher';
+      return formationRole;
+    };
 
     // 2. Create Allied NPC vehicles (Omega Team) with session randomized fleet composition
     for (let i = 1; i < playerFactionCount; i++) {
@@ -403,9 +431,6 @@ export class BattleEngine {
         assignedDomain
       );
       const stats = calculateShipStats(model, config);
-      const role: 'defender' | 'attacker' | 'skirmisher' = isTransportProtection && playerFactionTeam === 'player'
-        ? (i < 4 ? 'defender' : 'skirmisher')
-        : ((i === 1) ? 'defender' : (i === 2 ? 'attacker' : 'skirmisher'));
 
       // Check NPC weapon capabilities
       let npcHasSurface = false;
@@ -417,6 +442,16 @@ export class BattleEngine {
         if (comp.targetDomain === 'surface' || comp.targetDomain === 'both') npcHasSurface = true;
         if (comp.targetDomain === 'air' || comp.targetDomain === 'both') npcHasAir = true;
       }
+
+      const role = selectNpcRole(
+        playerFactionTeam,
+        i,
+        model.domain || 'land',
+        model.combatRole,
+        stats.speed,
+        stats.armorRating,
+        npcHasSurface
+      );
 
       const allySpawn = getSafeSpawn(playerFactionTeam, model.domain || 'land', i);
 
@@ -471,12 +506,6 @@ export class BattleEngine {
       );
       const stats = calculateShipStats(model, config);
 
-      // Balanced combat roles matching allied force
-      let role: 'attacker' | 'defender' | 'skirmisher' = isTransportProtection && opposingFactionTeam === 'player' ? 'defender' : 'attacker';
-      if (!isTransportProtection && i === 1) role = 'defender';
-      else if (i === 3) role = 'skirmisher';
-      else if (!isTransportProtection) role = 'attacker';
-
       let npcHasSurface = false;
       let npcHasAir = false;
       for (const hp of model.hardpoints) {
@@ -486,6 +515,16 @@ export class BattleEngine {
         if (comp.targetDomain === 'surface' || comp.targetDomain === 'both') npcHasSurface = true;
         if (comp.targetDomain === 'air' || comp.targetDomain === 'both') npcHasAir = true;
       }
+
+      const role = selectNpcRole(
+        opposingFactionTeam,
+        i,
+        model.domain || 'land',
+        model.combatRole,
+        stats.speed,
+        stats.armorRating,
+        npcHasSurface
+      );
 
       const enemySpawn = getSafeSpawn(opposingFactionTeam, model.domain || 'land', i);
 
@@ -3014,8 +3053,11 @@ export class BattleEngine {
       }
     }
 
-    const enemyCommandStation = this.state.gameMode === 'command-station' && canEngageSurface
+    const enemyCommandStation = this.state.gameMode === 'command-station'
       ? this.state.commandStations?.find(cs => cs.team !== ship.team && !cs.isDestroyed)
+      : undefined;
+    const friendlyCommandStation = this.state.gameMode === 'command-station'
+      ? this.state.commandStations?.find(cs => cs.team === ship.team && !cs.isDestroyed)
       : undefined;
     const enemyConvoyTruck = this.state.gameMode === 'transport-protection' && ship.team === 'enemy' && canEngageSurface
       ? this.state.ships.find(s => s.id === this.state.transportMission?.truckShipId && !s.isSunk)
@@ -3060,10 +3102,23 @@ export class BattleEngine {
         stickyBonus = 260; // Strong stickiness so ship doesn't oscillate between targets
       }
 
-      // Convoy Interception priority in Mode 3
+      // Convoy interception remains the mission priority, but screening units
+      // retain enough target latitude to engage escorts around the route.
       let missionBonus = 0;
       if (this.state.transportMission && h.id === this.state.transportMission.truckShipId) {
-        missionBonus = 2200; // Major tactical objective priority
+        missionBonus = ship.tacticalRole === 'attacker' ? 2200 : 850;
+      }
+
+      if (enemyCommandStation && friendlyCommandStation) {
+        if (ship.tacticalRole === 'defender') {
+          const threatDistance = Math.hypot(h.x - friendlyCommandStation.x, h.y - friendlyCommandStation.y);
+          missionBonus += Math.max(0, 1400 - threatDistance) * 1.25;
+        } else if (ship.tacticalRole === 'skirmisher') {
+          const centerX = (friendlyCommandStation.x + enemyCommandStation.x) * 0.5;
+          const centerY = (friendlyCommandStation.y + enemyCommandStation.y) * 0.5;
+          const centerDistance = Math.hypot(h.x - centerX, h.y - centerY);
+          missionBonus += Math.max(0, 1300 - centerDistance) * 0.55;
+        }
       }
 
       // Base score: closer ships + damaged ships (focus fire) + domain compatibility + target stickiness + mission priority
@@ -3079,26 +3134,77 @@ export class BattleEngine {
     const tacticalTarget = target;
     const tacticalTargetDistance = minDist;
 
-    // Mode 2 is objective warfare: every surface-capable NPC advances on the
-    // opposing command station. Nearby units remain valid self-defense targets,
-    // but no longer pull the force away from the strategic objective.
     if (enemyCommandStation) {
-      target = {
-        x: enemyCommandStation.x,
-        y: enemyCommandStation.y,
-        domain: 'land',
-      } as ShipEntity;
-      minDist = Math.hypot(enemyCommandStation.x - ship.x, enemyCommandStation.y - ship.y);
-      ship.aiTargetId = enemyCommandStation.id;
-      ship.weaponTargetMode = 'surface';
+      const ownHpRatio = friendlyCommandStation
+        ? friendlyCommandStation.hp / Math.max(1, friendlyCommandStation.maxHp)
+        : 1;
+      const stationThreat = friendlyCommandStation
+        ? hostiles
+          .map(hostile => ({ hostile, distance: Math.hypot(hostile.x - friendlyCommandStation.x, hostile.y - friendlyCommandStation.y) }))
+          .filter(candidate => candidate.distance < (ownHpRatio < 0.6 ? 1450 : 1050))
+          .sort((a, b) => Math.hypot(a.hostile.x - ship.x, a.hostile.y - ship.y) - Math.hypot(b.hostile.x - ship.x, b.hostile.y - ship.y))[0]?.hostile
+        : undefined;
+      const immediateThreat = tacticalTarget && tacticalTargetDistance < (ship.tacticalRole === 'attacker' ? 300 : 620)
+        ? tacticalTarget
+        : undefined;
+
+      if (stationThreat && (ship.tacticalRole === 'defender' || ownHpRatio < 0.6)) {
+        target = stationThreat;
+      } else if (ship.tacticalRole === 'defender' && friendlyCommandStation) {
+        // Hold a mobile defensive orbit around the home station until a threat
+        // enters its approaches.
+        target = {
+          x: friendlyCommandStation.x,
+          y: friendlyCommandStation.y,
+          domain: ship.domain,
+        } as ShipEntity;
+      } else if (ship.tacticalRole === 'skirmisher' && !immediateThreat) {
+        const midpoint = {
+          x: ((friendlyCommandStation?.x ?? ship.x) + enemyCommandStation.x) * 0.5,
+          y: ((friendlyCommandStation?.y ?? ship.y) + enemyCommandStation.y) * 0.5,
+        };
+        if (ship.domain === 'land' && this.state.islands.length > 0) {
+          const middleIsland = this.state.islands.reduce((best, island) =>
+            Math.hypot(island.x - midpoint.x, island.y - midpoint.y) < Math.hypot(best.x - midpoint.x, best.y - midpoint.y)
+              ? island
+              : best
+          );
+          target = { x: middleIsland.x, y: middleIsland.y, domain: 'land' } as ShipEntity;
+        } else {
+          target = { ...midpoint, domain: ship.domain } as ShipEntity;
+        }
+      } else if (immediateThreat) {
+        target = immediateThreat;
+      } else {
+        target = {
+          x: enemyCommandStation.x,
+          y: enemyCommandStation.y,
+          domain: 'land',
+        } as ShipEntity;
+      }
+
+      minDist = Math.hypot(target.x - ship.x, target.y - ship.y);
+      ship.aiTargetId = target.id || (target.x === enemyCommandStation.x && target.y === enemyCommandStation.y
+        ? enemyCommandStation.id
+        : undefined);
+      ship.weaponTargetMode = target.id && target.domain === 'air' ? 'air' : 'surface';
     } else if (enemyConvoyTruck) {
-      // Mode 3 attackers advance on the win objective itself. Escort units can
-      // receive close-range self-defense fire, but cannot redirect the attack
-      // force into ordinary team-elimination behavior.
-      target = enemyConvoyTruck;
-      minDist = Math.hypot(enemyConvoyTruck.x - ship.x, enemyConvoyTruck.y - ship.y);
-      ship.aiTargetId = enemyConvoyTruck.id;
-      ship.weaponTargetMode = 'surface';
+      const truckHpRatio = enemyConvoyTruck.currentHp / Math.max(1, enemyConvoyTruck.maxHp);
+      const escortInterception = hostiles
+        .filter(hostile => hostile.id !== enemyConvoyTruck.id)
+        .map(hostile => ({
+          hostile,
+          shipDistance: Math.hypot(hostile.x - ship.x, hostile.y - ship.y),
+          truckDistance: Math.hypot(hostile.x - enemyConvoyTruck.x, hostile.y - enemyConvoyTruck.y),
+        }))
+        .filter(candidate => candidate.shipDistance < 760 || candidate.truckDistance < 720)
+        .sort((a, b) => (a.shipDistance + a.truckDistance * 0.4) - (b.shipDistance + b.truckDistance * 0.4))[0]?.hostile;
+      const shouldScreen = ship.tacticalRole === 'skirmisher' && truckHpRatio > 0.3 && escortInterception;
+      const shouldSelfDefend = tacticalTarget && tacticalTarget.id !== enemyConvoyTruck.id && tacticalTargetDistance < 240;
+      target = shouldScreen ? escortInterception : shouldSelfDefend ? tacticalTarget : enemyConvoyTruck;
+      minDist = Math.hypot(target.x - ship.x, target.y - ship.y);
+      ship.aiTargetId = target.id;
+      ship.weaponTargetMode = target.domain === 'air' ? 'air' : 'surface';
     } else if (target) {
       ship.aiTargetId = target.id;
       ship.weaponTargetMode = target.domain === 'air' ? 'air' : 'surface';
@@ -3329,7 +3435,7 @@ export class BattleEngine {
     }
 
     // Tactical escort and screening behavior
-    if (ship.tacticalRole === 'defender') {
+    if (ship.tacticalRole === 'defender' && this.state.gameMode !== 'command-station') {
       const friendlyLead = this.state.ships.find(s => s.team === ship.team && s.id !== ship.id && !s.isSunk);
       if (friendlyLead && Math.hypot(friendlyLead.x - ship.x, friendlyLead.y - ship.y) > 380) {
         navTargetX = (friendlyLead.x + target.x) * 0.5;
@@ -3522,7 +3628,8 @@ export class BattleEngine {
         ship.aiFireTimer = (ship.aiFireTimer || 0) - dt;
         if (ship.aiFireTimer <= 0) {
           const aimTarget = nearbyDefense?.weapon || enemyCommandStation;
-          const aimDistance = nearbyDefense?.distance || minDist;
+          const aimDistance = nearbyDefense?.distance
+            || Math.hypot(enemyCommandStation.x - ship.x, enemyCommandStation.y - ship.y);
           if (aimDistance <= maxRange * 1.1) {
             ship.weaponTargetMode = 'surface';
             const didFire = this.fireShipWeapons(ship, aimTarget.x, aimTarget.y);
@@ -3534,12 +3641,16 @@ export class BattleEngine {
       }
     } else if (enemyConvoyTruck) {
       const maxRange = ship.stats.effectiveRange || 580;
-      const immediateThreat = tacticalTarget && tacticalTarget.id !== enemyConvoyTruck.id
-        && tacticalTargetDistance <= Math.min(230, maxRange * 0.45)
-        ? tacticalTarget
-        : enemyConvoyTruck;
-      const fireDistance = immediateThreat.id === enemyConvoyTruck.id ? minDist : tacticalTargetDistance;
-      this.executeNpcGunnery(ship, immediateThreat, fireDistance, dt);
+      if (target.id !== enemyConvoyTruck.id) {
+        this.executeNpcGunnery(ship, target, minDist, dt);
+      } else {
+        const immediateThreat = tacticalTarget && tacticalTarget.id !== enemyConvoyTruck.id
+          && tacticalTargetDistance <= Math.min(230, maxRange * 0.45)
+          ? tacticalTarget
+          : enemyConvoyTruck;
+        const fireDistance = immediateThreat.id === enemyConvoyTruck.id ? minDist : tacticalTargetDistance;
+        this.executeNpcGunnery(ship, immediateThreat, fireDistance, dt);
+      }
     } else {
       this.executeNpcGunnery(ship, target, minDist, dt);
     }

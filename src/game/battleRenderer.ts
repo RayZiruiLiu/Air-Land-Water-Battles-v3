@@ -91,8 +91,10 @@ export function renderBattle(
   }
   if (clipBoundaryLand) ctx.restore();
 
-  // Mode 3 target marker sits over every terrain layer, but underneath vehicles.
+  // Mode 3 objective overlays sit over every terrain layer, but underneath vehicles.
+  drawExtractionZoneIndicator(ctx, state);
   drawConvoyTargetIndicator(ctx, state);
+  redrawWaterVehiclesAboveMode3Objectives(ctx, state, waterVehicles);
 
   // 6. Draw Land Combat Vehicles (Tanks, IFVs, SPAAGs driving over land & bridges)
   const landVehicles = state.ships.filter(s => s.domain === 'land');
@@ -5230,39 +5232,6 @@ export function drawMissionObjectives(ctx: CanvasRenderingContext2D, state: Batt
       });
     }
 
-    // Draw Destination Extraction Zone
-    if (tm.destination) {
-      const dest = tm.destination;
-      ctx.save();
-      ctx.translate(dest.x, dest.y);
-
-      // Pulsing extraction circle
-      const pulse = Math.sin(time * 3) * 6;
-      ctx.beginPath();
-      ctx.arc(0, 0, dest.radius + pulse, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.7)';
-      ctx.setLineDash([12, 6]);
-      ctx.stroke();
-
-      // Inner pad
-      ctx.beginPath();
-      ctx.arc(0, 0, dest.radius * 0.45, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-      ctx.fill();
-      ctx.strokeStyle = '#10b981';
-      ctx.setLineDash([]);
-      ctx.stroke();
-
-      ctx.fillStyle = '#34d399';
-      ctx.font = 'bold 13px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('EXTRACTION ZONE', 0, -dest.radius - 12);
-      ctx.restore();
-    }
-
   }
 
   // MODE 4: Amphibious Beachhead Landing Zone
@@ -5288,6 +5257,69 @@ export function drawMissionObjectives(ctx: CanvasRenderingContext2D, state: Batt
     ctx.fillText(am.isCarrierBeached ? 'BEACHHEAD SECURED (DEPLOYING)' : 'LANDING ZONE BEACHHEAD', 0, -lz.radius - 12);
     ctx.restore();
   }
+}
+
+function drawExtractionZoneIndicator(ctx: CanvasRenderingContext2D, state: BattleState) {
+  const destination = state.transportMission?.destination;
+  if (!destination) return;
+
+  ctx.save();
+  ctx.translate(destination.x, destination.y);
+  const pulse = Math.sin(state.time * 3) * 6;
+  ctx.beginPath();
+  ctx.arc(0, 0, destination.radius + pulse, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(16, 185, 129, 0.7)';
+  ctx.setLineDash([12, 6]);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(0, 0, destination.radius * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+  ctx.fill();
+  ctx.strokeStyle = '#10b981';
+  ctx.setLineDash([]);
+  ctx.stroke();
+
+  ctx.fillStyle = '#34d399';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('EXTRACTION ZONE', 0, -destination.radius - 12);
+  ctx.restore();
+}
+
+function redrawWaterVehiclesAboveMode3Objectives(
+  ctx: CanvasRenderingContext2D,
+  state: BattleState,
+  waterVehicles: ShipEntity[]
+) {
+  const mission = state.transportMission;
+  if (!mission || waterVehicles.length === 0) return;
+
+  const truck = state.ships.find(ship => ship.id === mission.truckShipId && !ship.isSunk);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(mission.destination.x + mission.destination.radius + 14, mission.destination.y);
+  ctx.arc(mission.destination.x, mission.destination.y, mission.destination.radius + 14, 0, Math.PI * 2);
+  ctx.rect(
+    mission.destination.x - 90,
+    mission.destination.y - mission.destination.radius - 34,
+    180,
+    30
+  );
+  if (truck) {
+    const targetRadius = Math.max(72, truck.model.hullLength * 0.48) + 14;
+    ctx.moveTo(truck.x + targetRadius, truck.y);
+    ctx.arc(truck.x, truck.y, targetRadius, 0, Math.PI * 2);
+    ctx.rect(truck.x - 80, truck.y - targetRadius - 28, 160, 24);
+  }
+  ctx.clip();
+  for (const vehicle of waterVehicles) {
+    drawWaterShip(ctx, vehicle, state.time);
+  }
+  ctx.restore();
 }
 
 function drawConvoyTargetIndicator(ctx: CanvasRenderingContext2D, state: BattleState) {
