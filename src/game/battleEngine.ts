@@ -431,11 +431,6 @@ export class BattleEngine {
         assignedDomain
       );
       const stats = calculateShipStats(model, config);
-      if (isTransportProtection && playerFactionTeam === 'player') {
-        // The mission convoy was deliberately accelerated; transporting NPCs
-        // need enough reserve speed to recover formation after combat or turns.
-        stats.speed = Math.max(stats.speed, 112);
-      }
 
       // Check NPC weapon capabilities
       let npcHasSurface = false;
@@ -510,9 +505,6 @@ export class BattleEngine {
         assignedDomain
       );
       const stats = calculateShipStats(model, config);
-      if (isTransportProtection && opposingFactionTeam === 'player') {
-        stats.speed = Math.max(stats.speed, 112);
-      }
 
       let npcHasSurface = false;
       let npcHasAir = false;
@@ -3362,6 +3354,55 @@ export class BattleEngine {
           )),
           domain: ship.domain,
         };
+        if (ship.domain === 'water') {
+          // A simple offset from the truck can land on the road island itself,
+          // leaving a ship orbiting an unreachable point near its spawn. Sample
+          // open water around the moving convoy and pick a reachable flank.
+          const flankAngles = [
+            side * Math.PI * 0.5,
+            -side * Math.PI * 0.5,
+            side * Math.PI * 0.7,
+            -side * Math.PI * 0.7,
+            side * Math.PI * 0.35,
+            -side * Math.PI * 0.35,
+          ];
+          let bestWaterAnchor: { x: number; y: number } | undefined;
+          let bestWaterAnchorScore = Infinity;
+          for (const radius of [420, 620, 820]) {
+            for (let angleIndex = 0; angleIndex < flankAngles.length; angleIndex++) {
+              const angle = friendlyConvoyTruck.angle + flankAngles[angleIndex];
+              const candidate = {
+                x: friendlyConvoyTruck.x - headingX * 120 + Math.cos(angle) * radius,
+                y: friendlyConvoyTruck.y - headingY * 120 + Math.sin(angle) * radius,
+              };
+              if (candidate.x < 120 || candidate.x > this.state.arenaWidth - 120
+                || candidate.y < 120 || candidate.y > this.state.arenaHeight - 120) continue;
+
+              let shorelineClearance = Infinity;
+              let insideLand = false;
+              for (const island of this.state.islands) {
+                const clearance = getPointPolygonDistance(candidate.x, candidate.y, island.points);
+                if (clearance.isInside) {
+                  insideLand = true;
+                  break;
+                }
+                shorelineClearance = Math.min(shorelineClearance, clearance.distance);
+              }
+              if (insideLand || shorelineClearance < 130) continue;
+
+              const continuityCost = Math.hypot(candidate.x - ship.x, candidate.y - ship.y);
+              const sidePreferenceCost = angleIndex === 0 ? 0 : angleIndex === 1 ? 90 : 180;
+              const score = continuityCost + sidePreferenceCost - Math.min(shorelineClearance, 300) * 0.35;
+              if (score < bestWaterAnchorScore) {
+                bestWaterAnchorScore = score;
+                bestWaterAnchor = candidate;
+              }
+            }
+          }
+          if (bestWaterAnchor) {
+            movementTarget = { ...bestWaterAnchor, domain: 'water' };
+          }
+        }
         if (ship.domain === 'land' && convoyCatchUp && this.state.transportMission) {
           // When far behind, rejoin through the authored connected road rather
           // than trying to cut across water toward the semi's current island.
