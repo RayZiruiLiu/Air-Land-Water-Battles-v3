@@ -600,6 +600,10 @@ export interface TransportMissionState {
   currentWaypointIndex: number;
   frontWaypointIndex: number;
   rearWaypointIndex: number;
+  plannedRoute?: { x: number; y: number; turnSeverity?: number }[];
+  truckPathIndex?: number;
+  frontPathIndex?: number;
+  rearPathIndex?: number;
   destination: { x: number; y: number; radius: number };
   reachedDestination: boolean;
   isTruckDestroyed: boolean;

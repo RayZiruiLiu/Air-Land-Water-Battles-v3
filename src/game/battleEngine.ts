@@ -1749,6 +1749,78 @@ export class BattleEngine {
     }
   }
 
+  private buildConvoyTurningPath(
+    route: { x: number; y: number }[],
+    truck: ShipEntity
+  ): { x: number; y: number; turnSeverity?: number }[] {
+    if (route.length < 3) return route.map(point => ({ ...point }));
+
+    const path: { x: number; y: number; turnSeverity?: number }[] = [{ ...route[0] }];
+    const hitchToTrailerAxle = truck.model.hullLength * 0.62;
+    // A broad curve lets the tractor begin rotating before the bridge joint and
+    // gives the long trailer room to track inside without touching the edge.
+    const rigTurningRadius = Math.max(truck.model.hullLength * 0.95, hitchToTrailerAxle * 1.55);
+
+    for (let i = 1; i < route.length - 1; i++) {
+      const previous = route[i - 1];
+      const corner = route[i];
+      const next = route[i + 1];
+      const incomingX = corner.x - previous.x;
+      const incomingY = corner.y - previous.y;
+      const outgoingX = next.x - corner.x;
+      const outgoingY = next.y - corner.y;
+      const incomingLength = Math.hypot(incomingX, incomingY) || 1;
+      const outgoingLength = Math.hypot(outgoingX, outgoingY) || 1;
+      const incomingUnitX = incomingX / incomingLength;
+      const incomingUnitY = incomingY / incomingLength;
+      const outgoingUnitX = outgoingX / outgoingLength;
+      const outgoingUnitY = outgoingY / outgoingLength;
+      const incomingAngle = Math.atan2(incomingUnitY, incomingUnitX);
+      const outgoingAngle = Math.atan2(outgoingUnitY, outgoingUnitX);
+      const turnSeverity = Math.abs(this.normalizeAngle(outgoingAngle - incomingAngle));
+
+      if (turnSeverity < 0.16) {
+        path.push({ ...corner });
+        continue;
+      }
+
+      // Tangent distance for a rounded corner, capped so both tangent points
+      // remain well inside the land area joining the two bridge centerlines.
+      const geometricTangent = rigTurningRadius * Math.tan(Math.min(1.18, turnSeverity * 0.5));
+      const tangentDistance = Math.min(
+        incomingLength * 0.34,
+        outgoingLength * 0.34,
+        Math.max(truck.model.hullLength * 0.72, geometricTangent),
+        285
+      );
+      const entry = {
+        x: corner.x - incomingUnitX * tangentDistance,
+        y: corner.y - incomingUnitY * tangentDistance,
+      };
+      const exit = {
+        x: corner.x + outgoingUnitX * tangentDistance,
+        y: corner.y + outgoingUnitY * tangentDistance,
+      };
+      path.push({ ...entry, turnSeverity });
+
+      // Quadratic Bezier samples form the pre-planned tractor centerline. The
+      // sample spacing is shorter than the cab so steering changes progressively.
+      const sampleCount = Math.max(5, Math.ceil((tangentDistance * 2) / 42));
+      for (let sample = 1; sample <= sampleCount; sample++) {
+        const t = sample / sampleCount;
+        const inverse = 1 - t;
+        path.push({
+          x: inverse * inverse * entry.x + 2 * inverse * t * corner.x + t * t * exit.x,
+          y: inverse * inverse * entry.y + 2 * inverse * t * corner.y + t * t * exit.y,
+          turnSeverity,
+        });
+      }
+    }
+
+    path.push({ ...route[route.length - 1] });
+    return path;
+  }
+
   private updateTransportMission(dt: number) {
     if (!this.state.transportMission) return;
     const tm = this.state.transportMission;
@@ -1771,30 +1843,65 @@ export class BattleEngine {
     const exitDy = routeEnd.y - routeBeforeEnd.y;
     const exitLength = Math.hypot(exitDx, exitDy) || 1;
     const exitClearanceDistance = 900;
-    const navigationWaypoints = [
+    const authoredNavigationRoute = [
       ...tm.waypoints,
       {
         x: routeEnd.x + (exitDx / exitLength) * exitClearanceDistance,
         y: routeEnd.y + (exitDy / exitLength) * exitClearanceDistance,
       },
     ];
+    // Build the complete articulated-rig path once, before the truck reaches
+    // any corner. All three fixed convoy vehicles then follow the same curve.
+    const navigationWaypoints = tm.plannedRoute
+      || (tm.plannedRoute = this.buildConvoyTurningPath(authoredNavigationRoute, truck));
 
     // Fixed convoy units use the authored road centerline directly. They never
     // invoke tactical land pathfinding, so they cannot choose branches, circle
     // an island, or wander away from the mission route.
-    const followRoad = (vehicle: ShipEntity, index: number, speedLevel: number): number => {
-      let nextIndex = Math.min(index, navigationWaypoints.length - 1);
+    const nearestPathIndex = (vehicle: ShipEntity): number => {
+      let bestIndex = 0;
+      let bestDistance = Infinity;
+      for (let i = 0; i < navigationWaypoints.length; i++) {
+        const distance = Math.hypot(navigationWaypoints[i].x - vehicle.x, navigationWaypoints[i].y - vehicle.y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = i;
+        }
+      }
+      return Math.min(navigationWaypoints.length - 1, bestIndex + 1);
+    };
+
+    const followRoad = (vehicle: ShipEntity, index: number | undefined, speedLevel: number): number => {
+      let nextIndex = Math.min(index ?? nearestPathIndex(vehicle), navigationWaypoints.length - 1);
       let waypoint = navigationWaypoints[nextIndex] || tm.destination;
       let distance = Math.hypot(waypoint.x - vehicle.x, waypoint.y - vehicle.y);
-      if (distance < 90 && nextIndex < navigationWaypoints.length - 1) {
+      while (distance < 58 && nextIndex < navigationWaypoints.length - 1) {
         nextIndex++;
         waypoint = navigationWaypoints[nextIndex];
         distance = Math.hypot(waypoint.x - vehicle.x, waypoint.y - vehicle.y);
       }
-      const desiredHeading = Math.atan2(waypoint.y - vehicle.y, waypoint.x - vehicle.x);
+
+      // Aim a short distance through the sampled curve instead of at the corner
+      // itself. This makes steering begin at the entry tangent without cutting
+      // across the inside bridge edge.
+      const lookAheadDistance = vehicle.isConvoyTruck ? truck.model.hullLength * 0.58 : vehicle.model.hullLength * 0.8;
+      let lookAheadIndex = nextIndex;
+      let accumulatedLookAhead = distance;
+      while (lookAheadIndex < navigationWaypoints.length - 1 && accumulatedLookAhead < lookAheadDistance) {
+        const a = navigationWaypoints[lookAheadIndex];
+        const b = navigationWaypoints[lookAheadIndex + 1];
+        accumulatedLookAhead += Math.hypot(b.x - a.x, b.y - a.y);
+        lookAheadIndex++;
+      }
+      const steeringTarget = navigationWaypoints[lookAheadIndex] || waypoint;
+      const desiredHeading = Math.atan2(steeringTarget.y - vehicle.y, steeringTarget.x - vehicle.x);
       const headingError = Math.abs(this.normalizeAngle(desiredHeading - vehicle.angle));
       this.applyAutopilotHeading(vehicle, desiredHeading, dt);
-      vehicle.targetSpeedLevel = headingError > 0.9 ? 0 : headingError > 0.48 ? Math.min(1, speedLevel) : speedLevel;
+      const upcomingTurnSeverity = navigationWaypoints
+        .slice(nextIndex, Math.min(navigationWaypoints.length, lookAheadIndex + 3))
+        .reduce((maximum, point) => Math.max(maximum, point.turnSeverity || 0), 0);
+      const curveSpeedLevel = upcomingTurnSeverity > 0.78 ? Math.min(1, speedLevel) : speedLevel;
+      vehicle.targetSpeedLevel = headingError > 1.05 ? 0 : headingError > 0.58 ? Math.min(1, curveSpeedLevel) : curveSpeedLevel;
       const location = this.landPathfinder.findLandLocation(vehicle.x, vehicle.y);
       vehicle.landRouteBridgeId = location.type === 'bridge' ? location.bridge?.id : undefined;
       return nextIndex;
@@ -1803,13 +1910,16 @@ export class BattleEngine {
     // Measure spacing along the road polyline instead of using direct distance.
     // This preserves vehicle order through corners where Euclidean distance can
     // shrink even though the vehicles are correctly separated along the road.
-    const routeProgress = (vehicle: ShipEntity): number => {
+    const routeProgress = (
+      vehicle: ShipEntity,
+      route: { x: number; y: number }[] = navigationWaypoints
+    ): number => {
       let accumulated = 0;
       let bestProgress = 0;
       let bestDistance = Infinity;
-      for (let i = 0; i < navigationWaypoints.length - 1; i++) {
-        const a = navigationWaypoints[i];
-        const b = navigationWaypoints[i + 1];
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i];
+        const b = route[i + 1];
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const lengthSq = dx * dx + dy * dy;
@@ -1838,20 +1948,38 @@ export class BattleEngine {
 
     const previousTruckWaypoint = tm.currentWaypointIndex;
     const truckSpeed = frontHummer && !frontHummer.isSunk && frontLead < 165 ? 0 : 1;
-    tm.currentWaypointIndex = followRoad(truck, tm.currentWaypointIndex, truckSpeed);
+    tm.truckPathIndex = followRoad(truck, tm.truckPathIndex, truckSpeed);
+
+    // Preserve authored checkpoint state for the HUD while the physical convoy
+    // follows the denser rounded path between those checkpoints.
+    const authoredProgress = routeProgress(truck, tm.waypoints);
+    let checkpointDistance = 0;
+    let nextCheckpoint = 1;
+    for (let i = 1; i < tm.waypoints.length; i++) {
+      checkpointDistance += Math.hypot(
+        tm.waypoints[i].x - tm.waypoints[i - 1].x,
+        tm.waypoints[i].y - tm.waypoints[i - 1].y
+      );
+      if (authoredProgress >= checkpointDistance - 55) {
+        nextCheckpoint = Math.min(tm.waypoints.length - 1, i + 1);
+      } else {
+        break;
+      }
+    }
+    tm.currentWaypointIndex = nextCheckpoint;
     if (tm.currentWaypointIndex > previousTruckWaypoint) {
       this.addCombatLog(`Convoy transport cleared Checkpoint ${tm.currentWaypointIndex}/${tm.waypoints.length}!`, truck.team);
     }
 
     if (frontHummer && !frontHummer.isSunk) {
       const frontSpeed = frontLead > 225 ? 0 : frontLead < 185 ? 2 : 1;
-      tm.frontWaypointIndex = followRoad(frontHummer, tm.frontWaypointIndex, frontSpeed);
+      tm.frontPathIndex = followRoad(frontHummer, tm.frontPathIndex, frontSpeed);
     }
     if (rearHummer && !rearHummer.isSunk) {
       // A 195px minimum center gap leaves ample clearance behind the new
       // 190px semi body even while the trailer swings through a turn.
       const rearSpeed = rearLag > 230 ? 2 : rearLag < 195 ? 0 : 1;
-      tm.rearWaypointIndex = followRoad(rearHummer, tm.rearWaypointIndex, rearSpeed);
+      tm.rearPathIndex = followRoad(rearHummer, tm.rearPathIndex, rearSpeed);
     }
 
     // Fixed convoy weapons remain active without allowing combat AI to seize
@@ -1870,8 +1998,13 @@ export class BattleEngine {
     tm.distanceRemaining = Math.round(distToDest);
 
     // Calculate progress percentage
-    const totalWps = tm.waypoints.length;
-    const pct = Math.min(99, Math.round((tm.currentWaypointIndex / totalWps) * 100));
+    const authoredRouteLength = tm.waypoints.slice(1).reduce((total, waypoint, index) => (
+      total + Math.hypot(
+        waypoint.x - tm.waypoints[index].x,
+        waypoint.y - tm.waypoints[index].y
+      )
+    ), 0);
+    const pct = Math.min(99, Math.round((authoredProgress / Math.max(1, authoredRouteLength)) * 100));
     tm.progressPercent = pct;
 
     // Extraction is awarded only when the semi-truck itself enters the green
