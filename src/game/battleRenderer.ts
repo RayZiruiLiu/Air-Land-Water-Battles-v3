@@ -1462,7 +1462,9 @@ function drawLandVehicle(
     ctx.rotate(relAngle);
     ctx.translate(-pivotX, 0);
   }
-  ctx.fillStyle = vehicle.team === 'player' ? '#2563eb' : '#dc2626';
+  ctx.fillStyle = bodyStyle === 'vehicle-ferry'
+    ? (vehicle.team === 'player' ? '#526862' : '#745750')
+    : (vehicle.team === 'player' ? '#2563eb' : '#dc2626');
   ctx.fillRect(-halfL * 0.88, -halfW * 0.22, 4, halfW * 0.44);
   ctx.restore();
 
@@ -1743,6 +1745,17 @@ function drawNavalHullPath(
     ctx.lineTo(halfL * 0.25, halfW * 0.88);
     ctx.lineTo(halfL * 0.55, halfW * 0.78);
     ctx.lineTo(halfL * 0.88, halfW * 0.45);
+  } else if (bodyStyle === 'vehicle-ferry') {
+    // Purpose-built Ro-Ro silhouette: high-volume parallel sides, broad stern,
+    // and a blunt reinforced bow sized around a full-width vehicle ramp.
+    ctx.moveTo(halfL, -halfW * 0.46);
+    ctx.lineTo(halfL * 0.86, -halfW * 0.88);
+    ctx.lineTo(-halfL * 0.88, -halfW * 0.92);
+    ctx.lineTo(-halfL, -halfW * 0.68);
+    ctx.lineTo(-halfL, halfW * 0.68);
+    ctx.lineTo(-halfL * 0.88, halfW * 0.92);
+    ctx.lineTo(halfL * 0.86, halfW * 0.88);
+    ctx.lineTo(halfL, halfW * 0.46);
   } else if (bodyStyle === 'carrier') {
     // Wasp LHD Amphibious Assault Carrier: Broad rectangular flight deck with port sponson
     ctx.moveTo(halfL * 0.98, -halfW * 0.75);
@@ -1861,7 +1874,55 @@ function drawNavalHull(
   ctx.stroke();
 
   // Deck Inlay & Details tailored to each naval hull configuration
-  if (bodyStyle === 'trimaran') {
+  if (bodyStyle === 'vehicle-ferry') {
+    // Enclosed Ro-Ro vehicle deck with raised coamings and a broad loading lane.
+    ctx.fillStyle = deckColor;
+    ctx.beginPath();
+    ctx.roundRect(-halfL * 0.88, -halfW * 0.72, halfL * 1.62, halfW * 1.44, 8);
+    ctx.fill();
+    ctx.strokeStyle = '#303633';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Heavy side casings and regularly spaced ventilation / access bays.
+    ctx.fillStyle = '#3f4747';
+    ctx.fillRect(-halfL * 0.84, -halfW * 0.76, halfL * 1.48, halfW * 0.19);
+    ctx.fillRect(-halfL * 0.84, halfW * 0.57, halfL * 1.48, halfW * 0.19);
+    ctx.strokeStyle = '#262b2b';
+    ctx.lineWidth = 1;
+    for (let x = -halfL * 0.72; x <= halfL * 0.55; x += Math.max(24, halfL * 0.18)) {
+      ctx.beginPath();
+      ctx.moveTo(x, -halfW * 0.76);
+      ctx.lineTo(x, -halfW * 0.57);
+      ctx.moveTo(x, halfW * 0.57);
+      ctx.lineTo(x, halfW * 0.76);
+      ctx.stroke();
+    }
+
+    // Twin road lanes make the transport purpose unmistakable without runway markings.
+    ctx.strokeStyle = 'rgba(229, 220, 190, 0.72)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([14, 12]);
+    ctx.beginPath();
+    ctx.moveTo(-halfL * 0.78, -halfW * 0.24);
+    ctx.lineTo(halfL * 0.80, -halfW * 0.24);
+    ctx.moveTo(-halfL * 0.78, halfW * 0.24);
+    ctx.lineTo(halfL * 0.80, halfW * 0.24);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Hinged bow and stern ramp seams.
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.72, -halfW * 0.58);
+    ctx.lineTo(halfL * 0.92, -halfW * 0.42);
+    ctx.lineTo(halfL * 0.92, halfW * 0.42);
+    ctx.lineTo(halfL * 0.72, halfW * 0.58);
+    ctx.moveTo(-halfL * 0.88, -halfW * 0.54);
+    ctx.lineTo(-halfL * 0.88, halfW * 0.54);
+    ctx.stroke();
+  } else if (bodyStyle === 'trimaran') {
     // Shaded water channels separating the central hull from the side outriggers
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(-halfL * 0.78, -halfW * 0.64, halfL * 0.95, halfW * 0.38);
@@ -2003,7 +2064,70 @@ function drawNavalSuperstructure(
   accentColor: string,
   time: number
 ) {
-  if (bodyStyle === 'carrier') {
+  if (bodyStyle === 'vehicle-ferry') {
+    ctx.save();
+
+    // Forward wheelhouse spans the beam like a working Ro-Ro ferry rather than
+    // the offset island and open flight deck of an aircraft carrier.
+    ctx.fillStyle = '#d0d0c7';
+    ctx.strokeStyle = '#3f4544';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(halfL * 0.40, -halfW * 0.62, halfL * 0.22, halfW * 1.24, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Continuous dark bridge windows across the bow-facing wheelhouse.
+    ctx.fillStyle = '#263235';
+    ctx.fillRect(halfL * 0.57, -halfW * 0.51, 5, halfW * 1.02);
+    for (let y = -halfW * 0.42; y <= halfW * 0.42; y += Math.max(10, halfW * 0.22)) {
+      ctx.fillStyle = '#809095';
+      ctx.fillRect(halfL * 0.58, y, 3, Math.max(5, halfW * 0.12));
+    }
+
+    // Twin exhaust stacks and a ferry-specific fixed navigation mast.
+    ctx.fillStyle = '#343937';
+    ctx.strokeStyle = '#252927';
+    ctx.fillRect(halfL * 0.20, -halfW * 0.56, halfL * 0.12, halfW * 0.20);
+    ctx.fillRect(halfL * 0.20, halfW * 0.36, halfL * 0.12, halfW * 0.20);
+    ctx.strokeRect(halfL * 0.20, -halfW * 0.56, halfL * 0.12, halfW * 0.20);
+    ctx.strokeRect(halfL * 0.20, halfW * 0.36, halfL * 0.12, halfW * 0.20);
+    ctx.strokeStyle = '#444944';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.48, -halfW * 0.18);
+    ctx.lineTo(halfL * 0.48, halfW * 0.18);
+    ctx.moveTo(halfL * 0.44, 0);
+    ctx.lineTo(halfL * 0.52, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#b3aa8f';
+    ctx.beginPath();
+    ctx.arc(halfL * 0.48, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Hydraulic ramp hinges, winch drums, and high-visibility loading arrows.
+    ctx.fillStyle = '#2f3432';
+    for (const y of [-halfW * 0.46, halfW * 0.46]) {
+      ctx.beginPath();
+      ctx.arc(halfL * 0.78, y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-halfL * 0.80, y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.moveTo(halfL * 0.82, 0);
+    ctx.lineTo(halfL * 0.68, -9);
+    ctx.lineTo(halfL * 0.68, -3);
+    ctx.lineTo(halfL * 0.50, -3);
+    ctx.lineTo(halfL * 0.50, 3);
+    ctx.lineTo(halfL * 0.68, 3);
+    ctx.lineTo(halfL * 0.68, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  } else if (bodyStyle === 'carrier') {
     // Flight Deck Runway Lines & Island Superstructure
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
@@ -4892,6 +5016,12 @@ export function drawCommandStation(ctx: CanvasRenderingContext2D, station: Comma
   ctx.save();
   ctx.translate(station.x, station.y);
 
+  if (station.style === 'coastal-headquarters') {
+    drawCoastalHeadquarters(ctx, station, time);
+    ctx.restore();
+    return;
+  }
+
   const isAllied = station.team === 'player';
   const mainColor = isAllied ? '#10b981' : '#f43f5e';
   const baseFill = station.isDestroyed ? '#262626' : '#1e293b';
@@ -5033,6 +5163,151 @@ export function drawCommandStation(ctx: CanvasRenderingContext2D, station: Comma
   ctx.restore();
 }
 
+function drawCoastalHeadquarters(
+  ctx: CanvasRenderingContext2D,
+  station: CommandStationEntity,
+  time: number
+) {
+  const r = station.radius;
+  const teamMark = station.team === 'player' ? '#58766a' : '#765b55';
+  const concrete = station.isDestroyed ? '#393735' : '#77766d';
+  const concreteDark = station.isDestroyed ? '#272624' : '#555850';
+  const roof = station.isDestroyed ? '#242321' : '#3f4744';
+
+  // Irregular poured-concrete perimeter with projecting bastions and access yard.
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.04, -r * 0.50);
+  ctx.lineTo(-r * 0.70, -r * 0.92);
+  ctx.lineTo(-r * 0.18, -r * 0.98);
+  ctx.lineTo(r * 0.04, -r * 0.80);
+  ctx.lineTo(r * 0.62, -r * 0.82);
+  ctx.lineTo(r * 0.98, -r * 0.46);
+  ctx.lineTo(r * 1.02, r * 0.22);
+  ctx.lineTo(r * 0.72, r * 0.76);
+  ctx.lineTo(r * 0.18, r * 0.92);
+  ctx.lineTo(-r * 0.30, r * 0.82);
+  ctx.lineTo(-r * 0.80, r * 0.94);
+  ctx.lineTo(-r * 1.06, r * 0.46);
+  ctx.closePath();
+  ctx.fillStyle = station.isDestroyed ? 'rgba(54, 51, 47, 0.72)' : '#858379';
+  ctx.fill();
+  ctx.strokeStyle = '#343633';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  // Layered headquarters blocks, command wing, service wing, and hardened core.
+  ctx.fillStyle = concrete;
+  ctx.strokeStyle = '#3b3d39';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-r * 0.72, -r * 0.55, r * 1.18, r * 1.08, 9);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = concreteDark;
+  ctx.beginPath();
+  ctx.roundRect(-r * 0.18, -r * 0.70, r * 0.72, r * 0.58, 7);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.roundRect(-r * 0.08, r * 0.16, r * 0.82, r * 0.44, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Hardened central operations block with realistic narrow blast windows.
+  ctx.fillStyle = roof;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.34, -r * 0.34);
+  ctx.lineTo(r * 0.27, -r * 0.38);
+  ctx.lineTo(r * 0.42, -r * 0.08);
+  ctx.lineTo(r * 0.28, r * 0.28);
+  ctx.lineTo(-r * 0.38, r * 0.30);
+  ctx.lineTo(-r * 0.52, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#2f322f';
+  ctx.stroke();
+  ctx.fillStyle = '#242c2d';
+  for (let y = -r * 0.20; y <= r * 0.18; y += r * 0.19) {
+    ctx.fillRect(-r * 0.40, y, r * 0.58, 5);
+  }
+
+  // Vehicle gates, rooftop ventilation, and restrained team-identification panels.
+  ctx.fillStyle = '#30332f';
+  ctx.fillRect(-r * 0.67, r * 0.15, r * 0.26, r * 0.30);
+  ctx.fillRect(r * 0.41, r * 0.28, r * 0.22, r * 0.22);
+  ctx.fillStyle = teamMark;
+  ctx.fillRect(-r * 0.70, -r * 0.54, r * 0.34, 7);
+  ctx.fillRect(r * 0.16, r * 0.52, r * 0.36, 7);
+  ctx.fillStyle = '#454842';
+  for (const [x, y] of [[-0.50, -0.38], [0.02, -0.56], [0.37, 0.36]] as const) {
+    ctx.beginPath();
+    ctx.arc(r * x, r * y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (!station.isDestroyed) {
+    // Central communications mast and rotating conventional radar array.
+    ctx.strokeStyle = '#4b4d47';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.02, -r * 0.12);
+    ctx.lineTo(-r * 0.02, -r * 0.55);
+    ctx.stroke();
+    drawRotatingRadar(ctx, -r * 0.02, -r * 0.57, 13, time, 1.7, 'lattice');
+
+    for (const turret of station.turrets || []) {
+      ctx.save();
+      ctx.translate(turret.offsetX, turret.offsetY);
+      ctx.rotate(turret.angle);
+      ctx.fillStyle = '#4b514d';
+      ctx.strokeStyle = '#292d2a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#292e2c';
+      if (turret.type === 'missile') {
+        ctx.fillRect(-5, -8, 22, 16);
+        ctx.fillStyle = '#9b8b69';
+        ctx.fillRect(17, -6, 5, 4);
+        ctx.fillRect(17, 2, 5, 4);
+      } else if (turret.type === 'ciws') {
+        ctx.fillRect(0, -4, 21, 3);
+        ctx.fillRect(0, 2, 21, 3);
+      } else {
+        ctx.fillRect(0, -5, 27, 4);
+        ctx.fillRect(0, 2, 27, 4);
+      }
+      ctx.restore();
+    }
+  } else {
+    ctx.strokeStyle = '#242321';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 7; i++) {
+      const a = i * 1.7;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 10, Math.sin(a) * 10);
+      ctx.lineTo(Math.cos(a) * r * 0.72, Math.sin(a) * r * 0.72);
+      ctx.stroke();
+    }
+  }
+
+  const barW = 150;
+  const barY = -r - 28;
+  const hpRatio = Math.max(0, station.hp / station.maxHp);
+  ctx.fillStyle = 'rgba(30, 31, 29, 0.9)';
+  ctx.fillRect(-barW / 2 - 2, barY - 2, barW + 4, 10);
+  ctx.fillStyle = station.isDestroyed ? '#55534f' : hpRatio < 0.3 ? '#b4493f' : hpRatio < 0.6 ? '#b58b42' : teamMark;
+  ctx.fillRect(-barW / 2, barY, barW * hpRatio, 6);
+  ctx.strokeStyle = '#393b38';
+  ctx.strokeRect(-barW / 2 - 2, barY - 2, barW + 4, 10);
+  ctx.fillStyle = '#e7e5df';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(station.name, 0, barY - 7);
+}
+
 export function drawDefensiveWeapon(ctx: CanvasRenderingContext2D, weapon: DefensiveWeaponEntity, time: number) {
   const isAllied = weapon.team === 'player';
   const teamColor = isAllied ? '#10b981' : '#f43f5e';
@@ -5079,22 +5354,81 @@ export function drawDefensiveWeapon(ctx: CanvasRenderingContext2D, weapon: Defen
     return;
   }
 
-  // 1. Reinforced Concrete Octagonal Foundation
   const r = weapon.radius;
-  ctx.beginPath();
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-    const px = Math.cos(a) * r;
-    const py = Math.sin(a) * r;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fillStyle = '#334155';
-  ctx.fill();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = '#1e293b';
-  ctx.stroke();
+  if (weapon.style === 'defense-tower') {
+    // Tall, grounded island watchtower with a concrete base, armored upper
+    // platform, tracking radar, and independently rotating autocannon crown.
+    ctx.fillStyle = '#6f7068';
+    ctx.strokeStyle = '#343632';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#4f544f';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.68, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#30332f';
+    ctx.stroke();
+
+    // Buttresses give the tower a substantial, non-decorative footprint.
+    ctx.fillStyle = '#62645d';
+    for (let i = 0; i < 4; i++) {
+      ctx.save();
+      ctx.rotate(i * Math.PI / 2);
+      ctx.fillRect(r * 0.48, -5, r * 0.42, 10);
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.rotate(weapon.angle);
+    ctx.fillStyle = '#353a37';
+    ctx.strokeStyle = '#202421';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-13, -12, 28, 24, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#242926';
+    ctx.fillRect(4, -7, 30, 4);
+    ctx.fillRect(4, 3, 30, 4);
+    ctx.fillStyle = '#92866d';
+    ctx.fillRect(31, -8, 5, 6);
+    ctx.fillRect(31, 2, 5, 6);
+    ctx.restore();
+
+    // Independent search radar visually tracks even when guns face elsewhere.
+    drawRotatingRadar(ctx, -9, 0, 9, time, 2.8, 'curved');
+    ctx.strokeStyle = teamColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.82, -0.55, 0.55);
+    ctx.stroke();
+  } else {
+    // 1. Reinforced Concrete Octagonal Foundation
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#334155';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#1e293b';
+    ctx.stroke();
 
   // 2. Team Color Accent Trim
   ctx.beginPath();
@@ -5165,7 +5499,8 @@ export function drawDefensiveWeapon(ctx: CanvasRenderingContext2D, weapon: Defen
     ctx.fill();
   }
 
-  ctx.restore();
+    ctx.restore();
+  }
 
   // 4. Overhead Floating Health Bar & Title
   const barW = 46;

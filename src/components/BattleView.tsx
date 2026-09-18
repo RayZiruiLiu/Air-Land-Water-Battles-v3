@@ -750,7 +750,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
                           : 'bg-sky-950 text-sky-300 border border-sky-800'
                       }`}>
                         {am.isCarrierDestroyed
-                          ? 'CARRIER SUNK'
+                          ? 'VEHICLE FERRY SUNK'
                           : am.isCarrierBeached
                           ? `BEACHED - DEPLOYED ${am.deployedUnitsCount}/${am.maxDeployUnits}`
                           : `APPROACHING BEACH - ${embarkedUnits} EMBARKED`}
@@ -759,7 +759,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
                     <div className="flex items-center gap-3">
                       <div className="flex-1 flex flex-col gap-0.5">
                         <div className="flex justify-between text-[9px] font-mono text-slate-400">
-                          <span>Landing Carrier</span>
+                          <span>Vehicle Ferry</span>
                           <span>{Math.round(carrierHp)} HP</span>
                         </div>
                         <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
@@ -1377,8 +1377,8 @@ export const BattleView: React.FC<BattleViewProps> = ({
                 }
                 if (battleState.winReason === 'defense_successful') {
                   return isWin
-                    ? 'All enemy landing carriers and deployed armored vehicles have been repelled and destroyed along the coastline!'
-                    : 'Our amphibious landing carriers and shore armor assault waves were obliterated before seizing the fortress.';
+                    ? 'All enemy vehicle ferries and deployed armored vehicles have been repelled and destroyed along the coastline!'
+                    : 'Our amphibious vehicle ferries and shore armor assault waves were obliterated before seizing the fortress.';
                 }
                 return isWin
                   ? 'All hostile combat units have been neutralized. Your combined arms fleet demonstrated tactical superiority across the battlefield!'

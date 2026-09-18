@@ -1,5 +1,6 @@
 import {
   AmphibiousMissionState,
+  BaseShipModel,
   BattleBridge,
   BattleIsland,
   BattleMapConfig,
@@ -889,18 +890,42 @@ export class BattleEngine {
         team: defenderTeam,
         x: fortressPos.x,
         y: fortressPos.y,
-        hp: 9000,
-        maxHp: 9000,
-        radius: 90,
+        hp: 14000,
+        maxHp: 14000,
+        radius: 135,
         isDestroyed: false,
+        style: 'coastal-headquarters',
         turrets: [
-          { id: 'cs-f-t1', offsetX: -40, offsetY: -35, angle: Math.PI, cooldown: 1.0, maxCooldown: 3.2, range: 1050, damage: 110, type: 'cannon' },
-          { id: 'cs-f-t2', offsetX: -40, offsetY: 35, angle: Math.PI, cooldown: 2.2, maxCooldown: 3.2, range: 1050, damage: 110, type: 'cannon' },
-          { id: 'cs-f-t3', offsetX: 40, offsetY: 0, angle: 0, cooldown: 4.5, maxCooldown: 6.0, range: 1300, damage: 175, type: 'missile' },
-          { id: 'cs-f-t4', offsetX: -50, offsetY: 0, angle: Math.PI, cooldown: 0.5, maxCooldown: 0.28, range: 500, damage: 22, type: 'ciws' },
+          { id: 'cs-f-t1', offsetX: -72, offsetY: -58, angle: Math.PI, cooldown: 1.0, maxCooldown: 3.2, range: 1050, damage: 110, type: 'cannon' },
+          { id: 'cs-f-t2', offsetX: -72, offsetY: 58, angle: Math.PI, cooldown: 2.2, maxCooldown: 3.2, range: 1050, damage: 110, type: 'cannon' },
+          { id: 'cs-f-t3', offsetX: 66, offsetY: 0, angle: 0, cooldown: 4.5, maxCooldown: 6.0, range: 1300, damage: 175, type: 'missile' },
+          { id: 'cs-f-t4', offsetX: -82, offsetY: 0, angle: Math.PI, cooldown: 0.5, maxCooldown: 0.28, range: 500, damage: 22, type: 'ciws' },
         ],
       };
       commandStations = [coastalFortress];
+
+      // The two guard islands each carry a fully independent combat tower.
+      // They use the existing defensive-object damage and targeting systems,
+      // so either tower can continue fighting after the other is destroyed.
+      defensiveWeapons = mapConfig.obstacles.slice(1, 3).map((island, index): DefensiveWeaponEntity => ({
+        id: `mode4-island-defense-tower-${index + 1}`,
+        stationId: coastalFortress.id,
+        name: index === 0 ? 'North Island Defense Tower' : 'South Island Defense Tower',
+        team: defenderTeam,
+        x: island.x,
+        y: island.y,
+        angle: Math.PI,
+        hp: 1800,
+        maxHp: 1800,
+        radius: 38,
+        isDestroyed: false,
+        cooldown: 0.4 + index * 0.35,
+        maxCooldown: 0.62,
+        range: 1050,
+        damage: 34,
+        type: 'ciws',
+        style: 'defense-tower',
+      }));
 
       const carrierSpawn = mapConfig.amphibiousConfig?.carrierSpawn || {
         x: 500,
@@ -908,39 +933,51 @@ export class BattleEngine {
         angle: 0,
       };
 
-      const carrierBaseModel = SHIP_MODEL_MAP.get('water-carrier-assault')
-        || BASE_SHIPS.find(s => s.domain === 'water')
-        || BASE_SHIPS[0];
-      // Dedicated Mode 4 heavy landing ship. This mission-only clone is much
-      // larger than selectable vessels so its vehicle deck is unmistakable.
-      const carrierModel = {
-        ...carrierBaseModel,
-        id: 'mode4-heavy-landing-carrier',
-        name: 'Atlas Super-Heavy Amphibious Landing Carrier',
-        type: 'Super-Heavy Land-Vehicle Carrier Ship',
-        description: 'Mission-exclusive colossal landing carrier with an armored vehicle deck and bow deployment ramp.',
+      const ferryPalettes = [
+        { name: 'NATO Gray', hull: '#596168', deck: '#77786f', accent: '#d1c7a7', details: '#2f3437' },
+        { name: 'Baltic Workboat', hull: '#46545a', deck: '#6d746f', accent: '#b7aa88', details: '#293136' },
+        { name: 'Olive Drab', hull: '#4b5144', deck: '#6b6d5c', accent: '#c0b38e', details: '#292d27' },
+        { name: 'Coastal Tan', hull: '#625c50', deck: '#807967', accent: '#d3c49d', details: '#36322b' },
+      ];
+      const ferryPalette = ferryPalettes[Math.floor(Math.random() * ferryPalettes.length)];
+      // Mission-exclusive Ro-Ro vehicle ferry, authored from scratch rather
+      // than inheriting any selectable warship or aircraft-carrier model.
+      const carrierModel: BaseShipModel = {
+        id: 'mode4-super-heavy-roro-ferry',
+        name: 'Atlas Super-Heavy Vehicle Ferry',
+        type: 'Military Ro-Ro Vehicle Transport Ferry',
+        domain: 'water',
+        hullClass: 'RO-RO',
+        combatRole: 'support-tow',
+        description: `Mission-exclusive roll-on/roll-off landing ferry in ${ferryPalette.name} livery, with an enclosed vehicle deck and reinforced bow ramp.`,
         hullLength: 520,
-        hullWidth: 170,
+        hullWidth: 184,
         baseHp: 11000,
         baseSpeed: 24,
         baseTurnRate: 0.42,
         baseArmor: 58,
+        hardpoints: [],
+        svgHullPath: 'M 260,-62 L 220,-88 L -236,-88 L -260,-68 L -260,68 L -236,88 L 220,88 L 260,62 Z',
+        spriteStyle: {
+          bodyStyle: 'vehicle-ferry',
+          hullColor: ferryPalette.hull,
+          deckColor: ferryPalette.deck,
+          accentColor: ferryPalette.accent,
+          details: ferryPalette.details,
+        },
       };
       const carrierConfig: CustomShipConfig = {
-        name: attackerTeam === 'player' ? 'USS Tripoli (Assault Carrier)' : 'Hostile Amphibious Assault Carrier',
+        name: attackerTeam === 'player' ? 'Atlas Vehicle Ferry' : 'Hostile Vehicle Ferry',
         baseModelId: carrierModel.id,
-        primaryColor: attackerTeam === 'player' ? '#0284c7' : '#dc2626',
-        accentColor: '#38bdf8',
+        primaryColor: ferryPalette.hull,
+        accentColor: ferryPalette.accent,
         equippedComponents: {},
       };
-      carrierModel.hardpoints.forEach(hp => {
-        if (hp.defaultComponentId) carrierConfig.equippedComponents[hp.id] = hp.defaultComponentId;
-      });
       const carrierStats = calculateShipStats(carrierModel, carrierConfig);
 
       const carrierShip: ShipEntity = {
         id: 'assault-landing-carrier',
-        name: attackerTeam === 'player' ? 'USS Tripoli (Assault Carrier)' : 'Hostile Amphibious Assault Carrier',
+        name: attackerTeam === 'player' ? 'Atlas Vehicle Ferry' : 'Hostile Vehicle Ferry',
         team: attackerTeam,
         x: carrierSpawn.x,
         y: carrierSpawn.y,
@@ -973,10 +1010,9 @@ export class BattleEngine {
         domain: 'water',
         altitude: 0,
         weaponTargetMode: 'surface',
-        hasSurfaceWeapons: true,
-        hasAirWeapons: true,
+        hasSurfaceWeapons: false,
+        hasAirWeapons: false,
       };
-      initShipAircraftCapabilities(carrierShip);
       ships.push(carrierShip);
 
       const onboardLandUnits = ships.filter(ship => ship.team === attackerTeam && ship.domain === 'land');
@@ -1019,8 +1055,8 @@ export class BattleEngine {
         : `Convoy Interception active! Intercept and destroy the enemy armored cargo rig before it reaches the extraction zone.`;
     } else if (gameMode === 'amphibious-assault') {
       initialLogMessage = playerRole === 'attacker'
-        ? `Amphibious Assault underway! Escort the landing carrier to the beachhead, deploy assault armor, and breach the coastal fortress.`
-        : `Coastal Fortress Defense active! Repel the hostile amphibious landing carrier and protect the coastal citadel.`;
+        ? `Amphibious Assault underway! Escort the vehicle ferry to the beachhead, deploy assault armor, and breach the coastal fortress.`
+        : `Coastal Fortress Defense active! Repel the hostile vehicle ferry and protect the coastal citadel.`;
     }
 
     const battleState: BattleState = {
@@ -2128,8 +2164,8 @@ export class BattleEngine {
         carrier.targetSpeedLevel = 0;
         this.addCombatLog(
           am.maxDeployUnits > 0
-            ? 'Assault Carrier reached the deployment shore! Lowering the bow ramp for embarked land vehicles.'
-            : 'Assault Carrier reached the deployment shore with no embarked land vehicles.',
+            ? 'Vehicle ferry reached the deployment shore! Lowering the bow ramp for embarked land vehicles.'
+            : 'Vehicle ferry reached the deployment shore with no embarked land vehicles.',
           carrier.team
         );
         sounds.playWaterSplash();
@@ -2191,7 +2227,7 @@ export class BattleEngine {
         am.deployedUnitsCount++;
         if (am.deployedUnitsCount >= am.maxDeployUnits) am.isDeploying = false;
         this.addCombatLog(
-          `Beachhead: ${deployingUnit.name} deployed from the carrier and is advancing inland.`,
+          `Beachhead: ${deployingUnit.name} deployed from the vehicle ferry and is advancing inland.`,
           carrier.team
         );
       }
@@ -2361,10 +2397,10 @@ export class BattleEngine {
         this.state.winReason = 'defense_successful';
         if (isPlayerAttacker) {
           sounds.playDefeat();
-          this.addCombatLog('Defeat! Amphibious assault repelled! Carrier lost and landing forces eliminated.', 'enemy');
+          this.addCombatLog('Defeat! Amphibious assault repelled! Vehicle ferry lost and landing forces eliminated.', 'enemy');
         } else {
           sounds.playVictory();
-          this.addCombatLog('Coastal Fortress Defended! Hostile landing carrier and assault forces annihilated!', 'player');
+          this.addCombatLog('Coastal Fortress Defended! Hostile vehicle ferry and assault forces annihilated!', 'player');
         }
         return;
       }

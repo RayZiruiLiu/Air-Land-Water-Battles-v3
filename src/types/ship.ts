@@ -59,6 +59,7 @@ export type VehicleBodyStyle =
   | 'cruiser'
   | 'battleship'
   | 'carrier'
+  | 'vehicle-ferry'
   | 'submarine'
   | 'trimaran'
   | 'tumblehome-destroyer'
@@ -554,7 +555,7 @@ export interface DefensiveWeaponEntity {
   range: number;
   damage: number;
   type: 'cannon' | 'missile' | 'ciws';
-  style?: 'coastal-battery' | 'missile-silo' | 'flak-tower';
+  style?: 'coastal-battery' | 'missile-silo' | 'flak-tower' | 'defense-tower';
 }
 
 export interface CommandStationTurret {
@@ -590,6 +591,7 @@ export interface CommandStationEntity {
   maxHp: number;
   radius: number;
   isDestroyed: boolean;
+  style?: 'citadel' | 'coastal-headquarters';
   turrets?: CommandStationTurret[];
 }
 

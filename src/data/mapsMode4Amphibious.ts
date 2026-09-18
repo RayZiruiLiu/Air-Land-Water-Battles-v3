@@ -7,15 +7,15 @@ import { createIslandEx } from './mapHelpers';
 const MED_AMPHIB_ISLANDS: BattleIsland[] = [
   // Major Landmass on East (Defender Territory with Command Center)
   createIslandEx({
-    x: 3900,
+    x: 4500,
     y: 1600,
-    rx: 1500,
-    ry: 1350,
+    rx: 3000,
+    ry: 1500,
     shape: 'continent',
     style: 'sand',
     seed: 41.1,
     name: 'Gallipoli Continental Mainland (Defender Fortress)',
-    category: 'fortress',
+    category: 'mainland',
     foliage: [
       { x: 3800, y: 1600, type: 'building', radius: 28, color: '#334155' },
       { x: 3900, y: 1350, type: 'bunker', radius: 26, color: '#475569' },
@@ -62,15 +62,15 @@ const MED_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const DELTA_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3900,
+    x: 4500,
     y: 1600,
-    rx: 1500,
-    ry: 1350,
+    rx: 3000,
+    ry: 1500,
     shape: 'continent',
     style: 'sand',
     seed: 42.1,
     name: 'Mekong River Delta Mainland (Defender HQ)',
-    category: 'fortress',
+    category: 'mainland',
     foliage: [
       { x: 3800, y: 1600, type: 'building', radius: 28, color: '#14532d' },
       { x: 3900, y: 1350, type: 'bunker', radius: 26, color: '#166534' },
@@ -115,15 +115,15 @@ const DELTA_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const ARCTIC_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3900,
+    x: 4500,
     y: 1600,
-    rx: 1500,
-    ry: 1350,
+    rx: 3000,
+    ry: 1500,
     shape: 'continent',
     style: 'ice',
     seed: 43.1,
     name: 'Narvik Coastal Ice Mass (Defender HQ)',
-    category: 'fortress',
+    category: 'mainland',
     foliage: [
       { x: 3800, y: 1600, type: 'building', radius: 28, color: '#1e293b' },
       { x: 3900, y: 1350, type: 'bunker', radius: 26, color: '#334155' },
@@ -168,15 +168,15 @@ const ARCTIC_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const VOLCANO_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3900,
+    x: 4500,
     y: 1600,
-    rx: 1500,
-    ry: 1350,
+    rx: 3000,
+    ry: 1500,
     shape: 'continent',
     style: 'volcano',
     seed: 44.1,
     name: 'Mount Suribachi Landmass (Defender Fortress)',
-    category: 'fortress',
+    category: 'mainland',
     foliage: [
       { x: 3800, y: 1600, type: 'building', radius: 28, color: '#44403c' },
       { x: 3900, y: 1350, type: 'bunker', radius: 26, color: '#ea580c' },
@@ -221,15 +221,15 @@ const VOLCANO_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const PANAMA_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3900,
+    x: 4500,
     y: 1600,
-    rx: 1500,
-    ry: 1350,
+    rx: 3000,
+    ry: 1500,
     shape: 'continent',
     style: 'reef',
     seed: 45.1,
     name: 'San Lorenzo Continental Promontory (Defender Base)',
-    category: 'fortress',
+    category: 'mainland',
     foliage: [
       { x: 3800, y: 1600, type: 'building', radius: 28, color: '#065f46' },
       { x: 3900, y: 1350, type: 'bunker', radius: 26, color: '#047857' },
@@ -274,15 +274,15 @@ const PANAMA_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const BALTIC_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3900,
+    x: 4500,
     y: 1600,
-    rx: 1500,
-    ry: 1350,
+    rx: 3000,
+    ry: 1500,
     shape: 'continent',
     style: 'industrial',
     seed: 46.1,
     name: 'Saaremaa Mainland Fortress (Defender HQ)',
-    category: 'fortress',
+    category: 'mainland',
     foliage: [
       { x: 3800, y: 1600, type: 'building', radius: 28, color: '#334155' },
       { x: 3900, y: 1350, type: 'radar', radius: 24, color: '#0284c7' },
@@ -331,7 +331,7 @@ export const MODE_4_MAPS: BattleMapConfig[] = [
     name: 'Gallipoli Beachhead: Mediterranean Assault',
     gameMode: 'amphibious-assault',
     theme: 'Mediterranean Archipelago',
-    description: 'Allied naval invasion task force assaults the Gallipoli peninsula. The vehicle transport carrier moves toward the beachhead to deploy armor while warships provide naval gunfire support against the fortified command center.',
+    description: 'Allied naval invasion task force assaults the Gallipoli peninsula. The heavy Ro-Ro vehicle ferry moves toward the beachhead to deploy armor while warships provide naval gunfire support against the fortified command center.',
     dimensions: { width: 4800, height: 3200 },
     waterColors: {
       deep: '#0d324d',
@@ -375,7 +375,7 @@ export const MODE_4_MAPS: BattleMapConfig[] = [
     name: 'Mekong Delta Beachhead: Estuary Incursion',
     gameMode: 'amphibious-assault',
     theme: 'Tropical River Delta',
-    description: 'Amphibious task group penetrates deep into mangrove river mouths. Defending armor and aircraft fortify the command complex while the heavy carrier makes for the shoreline to unload armor battalions.',
+    description: 'Amphibious task group penetrates deep into mangrove river mouths. Defending armor and aircraft fortify the command complex while the heavy vehicle ferry makes for the shoreline to unload armor battalions.',
     dimensions: { width: 4800, height: 3200 },
     waterColors: {
       deep: '#143828',
@@ -419,7 +419,7 @@ export const MODE_4_MAPS: BattleMapConfig[] = [
     name: 'Narvik Amphibious Siege: Fjord Assault',
     gameMode: 'amphibious-assault',
     theme: 'Arctic Glacial Fjord',
-    description: 'Sub-zero naval invasion navigating icy glacial channels. Land-vehicle carrier ship must reach the snow beachhead to deploy tracked armor against the mountain command station.',
+    description: 'Sub-zero naval invasion navigating icy glacial channels. The military Ro-Ro ferry must reach the snow beachhead to deploy tracked armor against the mountain command station.',
     dimensions: { width: 4800, height: 3200 },
     waterColors: {
       deep: '#0f2438',
@@ -463,7 +463,7 @@ export const MODE_4_MAPS: BattleMapConfig[] = [
     name: 'Iwo Jima Basalt Fortress: Caldera Beach Assault',
     gameMode: 'amphibious-assault',
     theme: 'Volcanic Ring Archipelago',
-    description: 'Black sand beach invasion beneath volcanic crags. The transport carrier beaches under heavy mortar and artillery fire to deliver tanks directly to the crater entrance.',
+    description: 'Black sand beach invasion beneath volcanic crags. The vehicle ferry beaches under heavy mortar and artillery fire to deliver tanks directly to the crater entrance.',
     dimensions: { width: 4800, height: 3200 },
     waterColors: {
       deep: '#1a181e',
@@ -507,7 +507,7 @@ export const MODE_4_MAPS: BattleMapConfig[] = [
     name: 'San Lorenzo Fortress: Isthmus Beachhead',
     gameMode: 'amphibious-assault',
     theme: 'Tropical Jungle Isthmus',
-    description: 'Tropical coastal invasion targeting the San Lorenzo continental fort. The vehicle carrier pushes past defensive coral heads to establish a beachhead for the armored breakthrough.',
+    description: 'Tropical coastal invasion targeting the San Lorenzo continental fort. The Ro-Ro transport pushes past defensive coral heads to establish a beachhead for the armored breakthrough.',
     dimensions: { width: 4800, height: 3200 },
     waterColors: {
       deep: '#0c2e3b',
@@ -551,7 +551,7 @@ export const MODE_4_MAPS: BattleMapConfig[] = [
     name: 'Moon Sound Operation: Coastal Fortress Siege',
     gameMode: 'amphibious-assault',
     theme: 'Baltic Iron Straits',
-    description: 'Cold-water Baltic assault on a reinforced continental citadel. The carrier vessel must weather coastal artillery salvos to deposit heavy tanks on the sandy shoals of Saaremaa.',
+    description: 'Cold-water Baltic assault on a reinforced continental citadel. The vehicle ferry must weather coastal artillery salvos to deposit heavy tanks on the sandy shoals of Saaremaa.',
     dimensions: { width: 4800, height: 3200 },
     waterColors: {
       deep: '#0b1f33',
