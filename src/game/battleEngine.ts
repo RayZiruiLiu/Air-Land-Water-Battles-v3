@@ -173,6 +173,8 @@ export class BattleEngine {
     const gameMode: GameMode = mapConfig.gameMode || this.settings.gameMode || 'fleet-battle';
     const playerRole: PlayerMissionRole = this.settings.playerRole || (gameMode === 'transport-protection' ? 'defender' : 'attacker');
     const isTransportProtection = gameMode === 'transport-protection';
+    const isAmphibiousAssault = gameMode === 'amphibious-assault';
+    const amphibiousAttackerTeam: Team = playerRole === 'attacker' ? 'player' : 'enemy';
     // Mode 3 uses stable faction colors: the convoy is always blue and the
     // ambush force is always red. Selecting the ambush role therefore really
     // places the player on the red team and at its separate eastern spawn.
@@ -200,6 +202,50 @@ export class BattleEngine {
       const baseX = isPlayerTeam ? 480 : arenaWidth - 480;
       const spreadIdx = Math.floor(slotIndex / 2);
       const sign = slotIndex % 2 === 1 ? -1 : 1;
+
+      if (isAmphibiousAssault) {
+        const isAttackingTeam = team === amphibiousAttackerTeam;
+        const amphibious = mapConfig.amphibiousConfig;
+        const carrierSpawn = amphibious?.carrierSpawn || { x: 430, y: arenaHeight * 0.5, angle: 0 };
+        const commandCenter = amphibious?.commandCenterPos || { x: arenaWidth - 900, y: arenaHeight * 0.5 };
+
+        if (isAttackingTeam) {
+          // Land units are repositioned onto the carrier deck after the mission
+          // carrier is created. Their initial point is never an active land spawn.
+          if (domain === 'land') return { x: carrierSpawn.x, y: carrierSpawn.y };
+          const leftFormationX = Math.max(180, carrierSpawn.x - 120 + spreadIdx * 115);
+          const leftFormationY = carrierSpawn.y + sign * (260 + spreadIdx * 150);
+          return {
+            x: leftFormationX,
+            y: Math.max(180, Math.min(arenaHeight - 180, leftFormationY)),
+          };
+        }
+
+        if (domain === 'land') {
+          const defensiveLand = mapConfig.spawnPoints?.playerLand || [];
+          const point = defensiveLand[slotIndex % Math.max(1, defensiveLand.length)];
+          return point
+            ? { x: point.x, y: point.y }
+            : {
+                x: commandCenter.x - 260 - spreadIdx * 120,
+                y: commandCenter.y + sign * (180 + spreadIdx * 105),
+              };
+        }
+        if (domain === 'water') {
+          const defensiveWater = mapConfig.spawnPoints?.playerWater || [];
+          const point = defensiveWater[slotIndex % Math.max(1, defensiveWater.length)];
+          return point
+            ? { x: point.x, y: point.y }
+            : {
+                x: commandCenter.x - 1150,
+                y: commandCenter.y + sign * (520 + spreadIdx * 170),
+              };
+        }
+        return {
+          x: commandCenter.x - 180 - spreadIdx * 95,
+          y: Math.max(180, Math.min(arenaHeight - 180, commandCenter.y + sign * (220 + spreadIdx * 135))),
+        };
+      }
 
       // 1. If map defines explicit verified spawn points, prioritize them
       if (mapConfig.spawnPoints) {
@@ -348,6 +394,9 @@ export class BattleEngine {
 
     const playerSpawn = getSafeSpawn(playerFactionTeam, playerModel.domain || 'land', 0);
 
+    const playerHeading = isAmphibiousAssault
+      ? (playerFactionTeam === amphibiousAttackerTeam ? 0 : Math.PI)
+      : (playerFactionTeam === 'player' ? 0 : Math.PI);
     const playerShip: ShipEntity = {
       id: 'player-flagship',
       name: playerConfig.name || 'Flagship Vanguard',
@@ -358,7 +407,7 @@ export class BattleEngine {
       stats: playerStats,
       x: playerSpawn.x,
       y: playerSpawn.y,
-      angle: playerFactionTeam === 'player' ? 0 : Math.PI,
+      angle: playerHeading,
       vx: 0,
       vy: 0,
       speed: 0,
@@ -465,7 +514,9 @@ export class BattleEngine {
         stats,
         x: allySpawn.x,
         y: allySpawn.y,
-        angle: playerFactionTeam === 'player' ? 0 : Math.PI,
+        angle: isAmphibiousAssault
+          ? (playerFactionTeam === amphibiousAttackerTeam ? 0 : Math.PI)
+          : (playerFactionTeam === 'player' ? 0 : Math.PI),
         vx: 0,
         vy: 0,
         speed: 0,
@@ -538,7 +589,9 @@ export class BattleEngine {
         stats,
         x: enemySpawn.x,
         y: enemySpawn.y,
-        angle: opposingFactionTeam === 'player' ? 0 : Math.PI,
+        angle: isAmphibiousAssault
+          ? (opposingFactionTeam === amphibiousAttackerTeam ? 0 : Math.PI)
+          : (opposingFactionTeam === 'player' ? 0 : Math.PI),
         vx: 0,
         vy: 0,
         speed: 0,
@@ -855,7 +908,24 @@ export class BattleEngine {
         angle: 0,
       };
 
-      const carrierModel = SHIP_MODEL_MAP.get('carrier-amphibious-assault') || SHIP_MODEL_MAP.get('ship-carrier') || BASE_SHIPS.find(s => s.domain === 'water') || BASE_SHIPS[0];
+      const carrierBaseModel = SHIP_MODEL_MAP.get('water-carrier-assault')
+        || BASE_SHIPS.find(s => s.domain === 'water')
+        || BASE_SHIPS[0];
+      // Dedicated Mode 4 heavy landing ship. This mission-only clone is much
+      // larger than selectable vessels so its vehicle deck is unmistakable.
+      const carrierModel = {
+        ...carrierBaseModel,
+        id: 'mode4-heavy-landing-carrier',
+        name: 'Atlas Super-Heavy Amphibious Landing Carrier',
+        type: 'Super-Heavy Land-Vehicle Carrier Ship',
+        description: 'Mission-exclusive colossal landing carrier with an armored vehicle deck and bow deployment ramp.',
+        hullLength: 520,
+        hullWidth: 170,
+        baseHp: 11000,
+        baseSpeed: 24,
+        baseTurnRate: 0.42,
+        baseArmor: 58,
+      };
       const carrierConfig: CustomShipConfig = {
         name: attackerTeam === 'player' ? 'USS Tripoli (Assault Carrier)' : 'Hostile Amphibious Assault Carrier',
         baseModelId: carrierModel.id,
@@ -881,8 +951,8 @@ export class BattleEngine {
         targetRudderAngle: 0,
         speed: 0,
         targetSpeedLevel: 1,
-        currentHp: 5800,
-        maxHp: 5800,
+        currentHp: 11000,
+        maxHp: 11000,
         isSunk: false,
         sinkProgress: 0,
         isPlayer: false,
@@ -890,9 +960,9 @@ export class BattleEngine {
         config: carrierConfig,
         stats: {
           ...carrierStats,
-          maxHp: 5800,
-          speed: 40,
-          armorRating: 46,
+          maxHp: 11000,
+          speed: 34,
+          armorRating: 58,
         },
         cooldowns: {},
         idleTimer: 0,
@@ -909,6 +979,22 @@ export class BattleEngine {
       initShipAircraftCapabilities(carrierShip);
       ships.push(carrierShip);
 
+      const onboardLandUnits = ships.filter(ship => ship.team === attackerTeam && ship.domain === 'land');
+      onboardLandUnits.forEach((unit, slot) => {
+        unit.isOnboardCarrier = true;
+        unit.carrierId = carrierShip.id;
+        unit.onboardCarrierSlot = slot;
+        unit.targetSpeedLevel = 0;
+        unit.speed = 0;
+        const column = Math.floor(slot / 2);
+        const row = slot % 2 === 0 ? -1 : 1;
+        const localX = -carrierModel.hullLength * 0.22 + column * 82;
+        const localY = row * carrierModel.hullWidth * 0.22;
+        unit.x = carrierShip.x + Math.cos(carrierShip.angle) * localX - Math.sin(carrierShip.angle) * localY;
+        unit.y = carrierShip.y + Math.sin(carrierShip.angle) * localX + Math.cos(carrierShip.angle) * localY;
+        unit.angle = carrierShip.angle;
+      });
+
       amphibiousMission = {
         carrierShipId: carrierShip.id,
         landingZone,
@@ -917,10 +1003,10 @@ export class BattleEngine {
         isCarrierDestroyed: false,
         isDeploying: false,
         deployedUnitsCount: 0,
-        maxDeployUnits: 5,
+        maxDeployUnits: onboardLandUnits.length,
         deployTimer: 0,
-        carrierHp: 5800,
-        carrierMaxHp: 5800,
+        carrierHp: 11000,
+        carrierMaxHp: 11000,
       };
     }
 
@@ -1010,14 +1096,14 @@ export class BattleEngine {
 
   public adjustPlayerThrottle(delta: number) {
     const player = this.getPlayerShip();
-    if (!player || player.isSunk) return;
+    if (!player || player.isSunk || player.isOnboardCarrier) return;
     const current = player.targetSpeedLevel;
     player.targetSpeedLevel = Math.max(-1, Math.min(2, current + delta));
   }
 
   public setPlayerThrottle(level: number) {
     const player = this.getPlayerShip();
-    if (!player || player.isSunk) return;
+    if (!player || player.isSunk || player.isOnboardCarrier) return;
     player.targetSpeedLevel = Math.max(-1, Math.min(2, Math.round(level)));
   }
 
@@ -1027,7 +1113,7 @@ export class BattleEngine {
 
   public setPlayerRudder(angle: number) {
     const player = this.getPlayerShip();
-    if (!player || player.isSunk) return;
+    if (!player || player.isSunk || player.isOnboardCarrier) return;
     const clamped = Math.max(-1, Math.min(1, angle));
     player.rudderAngle = clamped;
     player.targetRudderAngle = clamped;
@@ -1107,7 +1193,7 @@ export class BattleEngine {
 
   public firePlayerWeapons(customTargetX?: number, customTargetY?: number): boolean {
     const player = this.getPlayerShip();
-    if (!player || player.isSunk) return false;
+    if (!player || player.isSunk || player.isOnboardCarrier) return false;
     const targetX = customTargetX !== undefined && !isNaN(customTargetX) ? customTargetX : this.state.mouseWorldPos.x;
     const targetY = customTargetY !== undefined && !isNaN(customTargetY) ? customTargetY : this.state.mouseWorldPos.y;
     if (isNaN(targetX) || isNaN(targetY)) return false;
@@ -1559,9 +1645,9 @@ export class BattleEngine {
     // 3. Player Auto-fire if enabled
     if (this.settings.autoFire) {
       const player = this.getPlayerShip();
-      if (player && !player.isSunk) {
+      if (player && !player.isSunk && !player.isOnboardCarrier) {
         const hostileTeam: Team = player.team === 'player' ? 'enemy' : 'player';
-        const enemies = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk);
+        const enemies = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk && !s.isOnboardCarrier);
         let nearest: ShipEntity | null = null;
         let minDist = Infinity;
         const targetMode = player.weaponTargetMode || 'surface';
@@ -1630,7 +1716,7 @@ export class BattleEngine {
       if (station.isDestroyed) continue;
 
       const hostileTeam: Team = station.team === 'player' ? 'enemy' : 'player';
-      const potentialTargets = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk);
+      const potentialTargets = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk && !s.isOnboardCarrier);
 
       for (const turret of station.turrets) {
         turret.cooldown = Math.max(0, turret.cooldown - dt);
@@ -1697,7 +1783,7 @@ export class BattleEngine {
       weapon.cooldown = Math.max(0, weapon.cooldown - dt);
 
       const hostileTeam: Team = weapon.team === 'player' ? 'enemy' : 'player';
-      const potentialTargets = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk);
+      const potentialTargets = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk && !s.isOnboardCarrier);
 
       let nearest: ShipEntity | null = null;
       let minDist = weapon.range;
@@ -2023,6 +2109,9 @@ export class BattleEngine {
     if (!carrier || carrier.isSunk) {
       am.isCarrierDestroyed = true;
       am.carrierHp = 0;
+      for (const onboardUnit of this.state.ships.filter(ship => ship.isOnboardCarrier && !ship.isSunk)) {
+        this.sinkShip(onboardUnit, carrier?.id);
+      }
       return;
     }
 
@@ -2031,12 +2120,18 @@ export class BattleEngine {
 
     if (!am.isCarrierBeached) {
       const distToLz = Math.hypot(am.landingZone.x - carrier.x, am.landingZone.y - carrier.y);
-      if (distToLz <= am.landingZone.radius * 0.85) {
+      const bowBeachDistance = am.landingZone.radius + carrier.model.hullLength * 0.75;
+      if (distToLz <= bowBeachDistance) {
         am.isCarrierBeached = true;
-        am.isDeploying = true;
+        am.isDeploying = am.maxDeployUnits > 0;
         carrier.speed = 0;
         carrier.targetSpeedLevel = 0;
-        this.addCombatLog('Assault Carrier beached at landing zone! Commencing mechanized tank deployment!', carrier.team);
+        this.addCombatLog(
+          am.maxDeployUnits > 0
+            ? 'Assault Carrier reached the deployment shore! Lowering the bow ramp for embarked land vehicles.'
+            : 'Assault Carrier reached the deployment shore with no embarked land vehicles.',
+          carrier.team
+        );
         sounds.playWaterSplash();
       } else {
         const targetAngle = Math.atan2(am.landingZone.y - carrier.y, am.landingZone.x - carrier.x);
@@ -2048,68 +2143,57 @@ export class BattleEngine {
       am.deployTimer += dt;
       if (am.deployTimer >= 4.5) {
         am.deployTimer = 0;
+        const deployingUnit = this.state.ships
+          .filter(ship => ship.carrierId === carrier.id && ship.isOnboardCarrier && !ship.isSunk)
+          .sort((a, b) => (a.onboardCarrierSlot || 0) - (b.onboardCarrierSlot || 0))[0];
+        if (!deployingUnit) {
+          am.isDeploying = false;
+          return;
+        }
+
+        const deploymentNumber = am.deployedUnitsCount;
+        const spawnDistance = carrier.model.hullLength * 0.52 + 42;
+        const lateralOffset = (deploymentNumber % 2 === 0 ? -1 : 1) * (42 + Math.floor(deploymentNumber / 2) * 24);
+        let spawnX = carrier.x + Math.cos(carrier.angle) * spawnDistance - Math.sin(carrier.angle) * lateralOffset;
+        let spawnY = carrier.y + Math.sin(carrier.angle) * spawnDistance + Math.cos(carrier.angle) * lateralOffset;
+        const landPolygons = [
+          ...this.state.islands.map(island => island.points),
+          ...(this.state.bridges || []).map(bridge => bridge.points),
+        ];
+        const clearance = getLandClearance(spawnX, spawnY, landPolygons);
+        const requiredClearance = Math.max(deployingUnit.model.hullWidth, 36) * 0.65 + 18;
+        if (!clearance.onLand || clearance.distanceToWater < requiredClearance) {
+          spawnX = clearance.closestX + clearance.inwardNx * requiredClearance;
+          spawnY = clearance.closestY + clearance.inwardNy * requiredClearance;
+        }
+
+        deployingUnit.x = spawnX;
+        deployingUnit.y = spawnY;
+        deployingUnit.angle = carrier.angle;
+        deployingUnit.vx = 0;
+        deployingUnit.vy = 0;
+        deployingUnit.speed = 0;
+        deployingUnit.targetSpeedLevel = deployingUnit.isPlayer ? 0 : 2;
+        deployingUnit.rudderAngle = 0;
+        deployingUnit.targetRudderAngle = 0;
+        deployingUnit.isOnboardCarrier = false;
+        deployingUnit.carrierId = undefined;
+        deployingUnit.onboardCarrierSlot = undefined;
+        if (deployingUnit.towedTrailer) {
+          const towDistance = deployingUnit.model.hullLength * 0.48
+            + 22
+            + deployingUnit.towedTrailer.def.length * 0.48;
+          deployingUnit.towedTrailer.x = spawnX - Math.cos(deployingUnit.angle) * towDistance;
+          deployingUnit.towedTrailer.y = spawnY - Math.sin(deployingUnit.angle) * towDistance;
+          deployingUnit.towedTrailer.angle = deployingUnit.angle;
+        }
+
         am.deployedUnitsCount++;
-
-        // Spawn assault battle tank on the beachhead
-        const spawnDistance = carrier.model.hullLength * 0.48 + 35;
-        const spawnX = carrier.x + Math.cos(carrier.angle) * spawnDistance + (Math.random() - 0.5) * 40;
-        const spawnY = carrier.y + Math.sin(carrier.angle) * spawnDistance + (Math.random() - 0.5) * 40;
-
-        const tankModel = SHIP_MODEL_MAP.get('mbt-vanguard') || BASE_SHIPS.find(s => s.domain === 'land') || BASE_SHIPS[0];
-        const tankConfig: CustomShipConfig = {
-          name: `${carrier.team === 'player' ? 'Allied' : 'Hostile'} Vanguard Tank #${am.deployedUnitsCount}`,
-          baseModelId: tankModel.id,
-          primaryColor: carrier.team === 'player' ? '#10b981' : '#f43f5e',
-          accentColor: '#34d399',
-          equippedComponents: {},
-        };
-        tankModel.hardpoints.forEach(hp => {
-          if (hp.defaultComponentId) tankConfig.equippedComponents[hp.id] = hp.defaultComponentId;
-        });
-        const tankStats = calculateShipStats(tankModel, tankConfig);
-
-        const assaultTank: ShipEntity = {
-          id: `amphib-assault-unit-${am.deployedUnitsCount}`,
-          name: `${carrier.team === 'player' ? 'Allied' : 'Hostile'} Vanguard Tank #${am.deployedUnitsCount}`,
-          team: carrier.team,
-          x: spawnX,
-          y: spawnY,
-          vx: 0,
-          vy: 0,
-          angle: carrier.angle,
-          rudderAngle: 0,
-          targetRudderAngle: 0,
-          speed: 0,
-          targetSpeedLevel: 2,
-          currentHp: 1200,
-          maxHp: 1200,
-          isSunk: false,
-          sinkProgress: 0,
-          isPlayer: false,
-          model: tankModel,
-          config: tankConfig,
-          stats: {
-            ...tankStats,
-            maxHp: 1200,
-            speed: 78,
-            armorRating: 38,
-          },
-          cooldowns: {},
-          idleTimer: 0,
-          fireTimer: 0,
-          aiState: 'attack',
-          aiDecisionTimer: 0.5,
-          tacticalRole: 'attacker',
-          domain: 'land',
-          altitude: 0,
-          weaponTargetMode: 'surface',
-          hasSurfaceWeapons: true,
-          hasAirWeapons: false,
-        };
-        assaultTank.towedTrailer = initVehicleTrailer(assaultTank);
-        this.state.ships.push(assaultTank);
-
-        this.addCombatLog(`Beachhead: Mechanized Tank #${am.deployedUnitsCount} deployed! Advancing on coastal fortress.`, carrier.team);
+        if (am.deployedUnitsCount >= am.maxDeployUnits) am.isDeploying = false;
+        this.addCombatLog(
+          `Beachhead: ${deployingUnit.name} deployed from the carrier and is advancing inland.`,
+          carrier.team
+        );
       }
     }
   }
@@ -2317,6 +2401,37 @@ export class BattleEngine {
           color: '#64748b',
           type: 'smoke',
         });
+      }
+      return;
+    }
+
+    // Mode 4 attacking land vehicles are cargo until the carrier reaches the
+    // beach. Lock them to deck slots and prevent independent physics/control.
+    if (ship.isOnboardCarrier && ship.carrierId) {
+      const carrier = this.state.ships.find(candidate => candidate.id === ship.carrierId);
+      if (!carrier || carrier.isSunk) {
+        this.sinkShip(ship, carrier?.id);
+        return;
+      }
+      const slot = ship.onboardCarrierSlot || 0;
+      const column = Math.floor(slot / 2);
+      const row = slot % 2 === 0 ? -1 : 1;
+      const localX = -carrier.model.hullLength * 0.22 + column * 82;
+      const localY = row * carrier.model.hullWidth * 0.22;
+      ship.x = carrier.x + Math.cos(carrier.angle) * localX - Math.sin(carrier.angle) * localY;
+      ship.y = carrier.y + Math.sin(carrier.angle) * localX + Math.cos(carrier.angle) * localY;
+      ship.angle = carrier.angle;
+      ship.speed = 0;
+      ship.targetSpeedLevel = 0;
+      ship.vx = carrier.vx;
+      ship.vy = carrier.vy;
+      ship.rudderAngle = 0;
+      ship.targetRudderAngle = 0;
+      if (ship.towedTrailer) {
+        const towDistance = ship.model.hullLength * 0.48 + 22 + ship.towedTrailer.def.length * 0.48;
+        ship.towedTrailer.x = ship.x - Math.cos(ship.angle) * towDistance;
+        ship.towedTrailer.y = ship.y - Math.sin(ship.angle) * towDistance;
+        ship.towedTrailer.angle = ship.angle;
       }
       return;
     }
@@ -3045,6 +3160,7 @@ export class BattleEngine {
   }
 
   private updateNpcAi(ship: ShipEntity, dt: number) {
+    if (ship.isOnboardCarrier) return;
     // Fixed Mode 3 convoy movement and defensive gunnery are driven by
     // updateTransportMission so combat AI cannot pull them off the road.
     if (this.state.gameMode === 'transport-protection' && (ship.isConvoyTruck || ship.convoyEscortPosition)) {
@@ -3063,7 +3179,9 @@ export class BattleEngine {
     // Find valid hostile targets based on vehicle domain and weapon capabilities:
     // Land vehicles and ships can ONLY attack aircraft if equipped with an air-targeting weapon.
     const targetTeam = ship.team === 'player' ? 'enemy' : 'player';
-    const allHostiles = this.state.ships.filter(s => s.team === targetTeam && !s.isSunk && !s.isDocked);
+    const allHostiles = this.state.ships.filter(s =>
+      s.team === targetTeam && !s.isSunk && !s.isDocked && !s.isOnboardCarrier
+    );
 
     // AI Aircraft Operations:
     // AI Carrier auto-launches fighter jets into combat
@@ -3212,6 +3330,7 @@ export class BattleEngine {
     }
 
     const enemyCommandStation = this.state.gameMode === 'command-station'
+      || this.state.gameMode === 'amphibious-assault'
       ? this.state.commandStations?.find(cs => cs.team !== ship.team && !cs.isDestroyed)
       : undefined;
     const friendlyCommandStation = this.state.gameMode === 'command-station'
@@ -4187,7 +4306,7 @@ export class BattleEngine {
     // Determine target category based on active targeting mode
     const targetMode = ship.weaponTargetMode || 'surface';
     const targetTeam = ship.team === 'player' ? 'enemy' : 'player';
-    const hostiles = this.state.ships.filter(s => s.team === targetTeam && !s.isSunk);
+    const hostiles = this.state.ships.filter(s => s.team === targetTeam && !s.isSunk && !s.isOnboardCarrier);
     
     // First find nearest hostile matching the current weapon target mode
     const domainHostiles = hostiles.filter(h => targetMode === 'air' ? h.domain === 'air' : h.domain !== 'air');
@@ -4429,7 +4548,7 @@ export class BattleEngine {
       // Check collision with ships
       let collided = false;
       for (const ship of this.state.ships) {
-        if (ship.team === p.team || ship.isSunk) continue;
+        if (ship.team === p.team || ship.isSunk || ship.isOnboardCarrier) continue;
 
         // Strict Target Domain Restrictions:
         // 1. Air-targeted-only projectiles can ONLY hit aircraft

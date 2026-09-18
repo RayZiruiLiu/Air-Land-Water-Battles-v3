@@ -35,7 +35,9 @@ export function renderBattle(
   // 2. Draw Islands / Map Landmasses
   // Objective-mode coastal landmasses deliberately continue past an arena edge. Keep
   // their rendered coastlines inside the playable chart.
-  const clipBoundaryLand = state.gameMode === 'command-station' || state.gameMode === 'transport-protection';
+  const clipBoundaryLand = state.gameMode === 'command-station'
+    || state.gameMode === 'transport-protection'
+    || state.gameMode === 'amphibious-assault';
   if (clipBoundaryLand) {
     ctx.save();
     ctx.beginPath();

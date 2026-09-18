@@ -361,6 +361,7 @@ export interface ShipEntity {
   // Amphibious Assault Carrier transit
   isOnboardCarrier?: boolean;
   carrierId?: string;
+  onboardCarrierSlot?: number;
 
   // Mode 3 VIP Convoy Truck properties
   isConvoyTruck?: boolean;

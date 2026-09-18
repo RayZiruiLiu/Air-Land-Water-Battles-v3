@@ -7,9 +7,9 @@ import { createIslandEx } from './mapHelpers';
 const MED_AMPHIB_ISLANDS: BattleIsland[] = [
   // Major Landmass on East (Defender Territory with Command Center)
   createIslandEx({
-    x: 3500,
+    x: 3900,
     y: 1600,
-    rx: 1100,
+    rx: 1500,
     ry: 1350,
     shape: 'continent',
     style: 'sand',
@@ -62,9 +62,9 @@ const MED_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const DELTA_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3500,
+    x: 3900,
     y: 1600,
-    rx: 1100,
+    rx: 1500,
     ry: 1350,
     shape: 'continent',
     style: 'sand',
@@ -115,9 +115,9 @@ const DELTA_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const ARCTIC_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3500,
+    x: 3900,
     y: 1600,
-    rx: 1100,
+    rx: 1500,
     ry: 1350,
     shape: 'continent',
     style: 'ice',
@@ -168,9 +168,9 @@ const ARCTIC_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const VOLCANO_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3500,
+    x: 3900,
     y: 1600,
-    rx: 1100,
+    rx: 1500,
     ry: 1350,
     shape: 'continent',
     style: 'volcano',
@@ -221,9 +221,9 @@ const VOLCANO_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const PANAMA_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3500,
+    x: 3900,
     y: 1600,
-    rx: 1100,
+    rx: 1500,
     ry: 1350,
     shape: 'continent',
     style: 'reef',
@@ -274,9 +274,9 @@ const PANAMA_AMPHIB_ISLANDS: BattleIsland[] = [
 // ---------------------------------------------------------------------------
 const BALTIC_AMPHIB_ISLANDS: BattleIsland[] = [
   createIslandEx({
-    x: 3500,
+    x: 3900,
     y: 1600,
-    rx: 1100,
+    rx: 1500,
     ry: 1350,
     shape: 'continent',
     style: 'industrial',

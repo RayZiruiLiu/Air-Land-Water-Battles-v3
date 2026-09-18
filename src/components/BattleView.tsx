@@ -730,8 +730,9 @@ export const BattleView: React.FC<BattleViewProps> = ({
               {(() => {
                 const am = battleState.amphibiousMission;
                 const carrier = battleState.ships.find(s => s.id === am.carrierShipId);
-                const fortress = battleState.commandStations?.find(cs => cs.team === 'enemy');
-                const isPlayerAttacking = am.assaultTeam === 'player';
+                const fortress = am.commandCenter;
+                const isPlayerAttacking = battleState.playerRole === 'attacker';
+                const embarkedUnits = battleState.ships.filter(s => s.isOnboardCarrier && !s.isSunk).length;
                 const carrierHp = carrier ? Math.max(0, carrier.currentHp) : 0;
                 const fortHp = fortress ? Math.max(0, fortress.hp) : 0;
                 return (
@@ -744,15 +745,15 @@ export const BattleView: React.FC<BattleViewProps> = ({
                       <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold ${
                         am.isCarrierBeached
                           ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                          : am.isCarrierSunk
+                          : am.isCarrierDestroyed
                           ? 'bg-rose-950 text-rose-400 border border-rose-800'
                           : 'bg-sky-950 text-sky-300 border border-sky-800'
                       }`}>
-                        {am.isCarrierSunk
+                        {am.isCarrierDestroyed
                           ? 'CARRIER SUNK'
                           : am.isCarrierBeached
                           ? `BEACHED - DEPLOYED ${am.deployedUnitsCount}/${am.maxDeployUnits}`
-                          : 'APPROACHING BEACH'}
+                          : `APPROACHING BEACH - ${embarkedUnits} EMBARKED`}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
@@ -763,7 +764,7 @@ export const BattleView: React.FC<BattleViewProps> = ({
                         </div>
                         <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
                           <div
-                            className={`h-full transition-all ${am.isCarrierSunk ? 'bg-rose-600' : 'bg-sky-400'}`}
+                            className={`h-full transition-all ${am.isCarrierDestroyed ? 'bg-rose-600' : 'bg-sky-400'}`}
                             style={{ width: `${carrier ? (carrierHp / carrier.maxHp) * 100 : 0}%` }}
                           />
                         </div>
@@ -841,6 +842,17 @@ export const BattleView: React.FC<BattleViewProps> = ({
               </div>
             </div>
 
+            {playerShip.isOnboardCarrier && (
+              <div className="rounded-xl border border-sky-500/50 bg-sky-950/80 px-3 py-2 text-center">
+                <div className="text-[11px] font-mono font-bold tracking-wide text-sky-200">
+                  EMBARKED — CONTROLS LOCKED
+                </div>
+                <div className="mt-0.5 text-[10px] text-sky-300/80">
+                  Vehicle control will transfer to you after shore deployment.
+                </div>
+              </div>
+            )}
+
             {/* Towed Trailer Status Card if attached */}
             {playerShip.towedTrailer && (
               <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-2.5 flex flex-col gap-1.5">
@@ -895,9 +907,15 @@ export const BattleView: React.FC<BattleViewProps> = ({
                   ].map(btn => (
                     <button
                       key={btn.level}
+                      disabled={playerShip.isOnboardCarrier}
                       onClick={() => engineRef.current?.setPlayerThrottle(btn.level)}
-                      className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition cursor-pointer ${
+                      className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition ${
+                        playerShip.isOnboardCarrier
+                          ? 'cursor-not-allowed bg-slate-900 text-slate-600'
+                          : 'cursor-pointer'
+                      } ${
                         playerShip.targetSpeedLevel === btn.level
+                          && !playerShip.isOnboardCarrier
                           ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/50'
                           : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                       }`}
@@ -920,22 +938,25 @@ export const BattleView: React.FC<BattleViewProps> = ({
             {/* Steering buttons for touch/mouse */}
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs">
               <button
+                disabled={playerShip.isOnboardCarrier}
                 onMouseDown={() => engineRef.current?.setPlayerRudder(-1)}
                 onMouseUp={() => engineRef.current?.setPlayerRudder(0)}
-                className="flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[11px] active:bg-emerald-600 transition cursor-pointer"
+                className="flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[11px] active:bg-emerald-600 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
               >
                 ◀ PIVOT LEFT (A)
               </button>
               <button
+                disabled={playerShip.isOnboardCarrier}
                 onClick={() => engineRef.current?.setPlayerRudder(0)}
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 font-mono text-[10px] cursor-pointer"
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 font-mono text-[10px] cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
               >
                 CENTER
               </button>
               <button
+                disabled={playerShip.isOnboardCarrier}
                 onMouseDown={() => engineRef.current?.setPlayerRudder(1)}
                 onMouseUp={() => engineRef.current?.setPlayerRudder(0)}
-                className="flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[11px] active:bg-emerald-600 transition cursor-pointer"
+                className="flex-1 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[11px] active:bg-emerald-600 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-900 disabled:text-slate-600"
               >
                 PIVOT RIGHT (D) ▶
               </button>
