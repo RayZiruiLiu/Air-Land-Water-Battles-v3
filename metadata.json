@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Air-Land-Water Battles V3",
+  "description": "Full-scale multi-domain combat featuring Tactical Annihilation, Command Station Siege, Transport Convoy Protection, and Amphibious Assault across 24 specialized battlefields.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
