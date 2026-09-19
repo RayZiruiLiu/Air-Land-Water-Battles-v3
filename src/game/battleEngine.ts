@@ -1181,6 +1181,7 @@ export class BattleEngine {
         deployTimer: 0,
         carrierHp: 11000,
         carrierMaxHp: 11000,
+        carrierExitY: carrierSpawn.y,
       };
     }
 
@@ -1821,7 +1822,12 @@ export class BattleEngine {
       const player = this.getPlayerShip();
       if (player && !player.isSunk && !player.isOnboardCarrier) {
         const hostileTeam: Team = player.team === 'player' ? 'enemy' : 'player';
-        const enemies = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk && !s.isOnboardCarrier);
+        const enemies = this.state.ships.filter(s =>
+          s.team === hostileTeam
+          && !s.isSunk
+          && !s.isOnboardCarrier
+          && !this.isExitingAmphibiousFerry(s)
+        );
         let nearest: ShipEntity | null = null;
         let minDist = Infinity;
         const targetMode = player.weaponTargetMode || 'surface';
@@ -1890,7 +1896,12 @@ export class BattleEngine {
       if (station.isDestroyed) continue;
 
       const hostileTeam: Team = station.team === 'player' ? 'enemy' : 'player';
-      const potentialTargets = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk && !s.isOnboardCarrier);
+      const potentialTargets = this.state.ships.filter(s =>
+        s.team === hostileTeam
+        && !s.isSunk
+        && !s.isOnboardCarrier
+        && !this.isExitingAmphibiousFerry(s)
+      );
 
       for (const turret of station.turrets) {
         turret.cooldown = Math.max(0, turret.cooldown - dt);
@@ -1957,7 +1968,12 @@ export class BattleEngine {
       weapon.cooldown = Math.max(0, weapon.cooldown - dt);
 
       const hostileTeam: Team = weapon.team === 'player' ? 'enemy' : 'player';
-      const potentialTargets = this.state.ships.filter(s => s.team === hostileTeam && !s.isSunk && !s.isOnboardCarrier);
+      const potentialTargets = this.state.ships.filter(s =>
+        s.team === hostileTeam
+        && !s.isSunk
+        && !s.isOnboardCarrier
+        && !this.isExitingAmphibiousFerry(s)
+      );
 
       let nearest: ShipEntity | null = null;
       let minDist = weapon.range;
@@ -2275,12 +2291,30 @@ export class BattleEngine {
     }
   }
 
+  private isExitingAmphibiousFerry(ship: ShipEntity): boolean {
+    const mission = this.state.amphibiousMission;
+    const deploymentHasFinished = !!mission
+      && mission.isCarrierBeached
+      && !mission.isDeploying
+      && !this.state.ships.some(candidate =>
+        candidate.carrierId === mission.carrierShipId
+        && (candidate.isOnboardCarrier || candidate.isDeployingFromCarrier)
+        && !candidate.isSunk
+      );
+    return this.state.gameMode === 'amphibious-assault'
+      && !!mission
+      && ship.id === mission.carrierShipId
+      && mission.carrierExitPhase !== 'exited'
+      && (!!mission.carrierExitPhase || deploymentHasFinished);
+  }
+
   private updateAmphibiousMission(dt: number) {
     if (!this.state.amphibiousMission) return;
     const am = this.state.amphibiousMission;
     const carrier = this.state.ships.find(s => s.id === am.carrierShipId);
 
     if (!carrier || carrier.isSunk) {
+      if (am.carrierExitPhase === 'exited') return;
       am.isCarrierDestroyed = true;
       am.carrierHp = 0;
       for (const onboardUnit of this.state.ships.filter(ship => ship.isOnboardCarrier && !ship.isSunk)) {
@@ -2291,6 +2325,40 @@ export class BattleEngine {
 
     am.carrierHp = Math.round(carrier.currentHp);
     am.carrierMaxHp = carrier.maxHp;
+
+    if (am.carrierExitPhase) {
+      carrier.hasSurfaceWeapons = false;
+      carrier.hasAirWeapons = false;
+      carrier.aiTargetId = undefined;
+      carrier.weaponTargetMode = 'surface';
+
+      if (am.carrierExitPhase === 'backing-off') {
+        const approachX = Math.cos(am.shoreApproachAngle);
+        const approachY = Math.sin(am.shoreApproachAngle);
+        const retreatProgress = (am.ferryDeploymentPoint.x - carrier.x) * approachX
+          + (am.ferryDeploymentPoint.y - carrier.y) * approachY;
+        carrier.targetRudderAngle = 0;
+        carrier.targetSpeedLevel = -1;
+        if (retreatProgress >= 440) {
+          am.carrierExitPhase = 'returning';
+          carrier.targetSpeedLevel = 1;
+          carrier.aiWaypoint = undefined;
+          this.addCombatLog('Vehicle ferry is clear of the beachhead and returning west as a non-combat vessel.', carrier.team);
+        }
+      } else if (am.carrierExitPhase === 'returning') {
+        const exitX = -carrier.model.hullLength * 0.75;
+        const exitAngle = Math.atan2(am.carrierExitY - carrier.y, exitX - carrier.x);
+        this.applyAutopilotHeading(carrier, exitAngle, dt);
+        carrier.targetSpeedLevel = 2;
+        if (carrier.x <= -carrier.model.hullLength * 0.55) {
+          am.carrierExitPhase = 'exited';
+          const carrierIndex = this.state.ships.findIndex(ship => ship.id === carrier.id);
+          if (carrierIndex >= 0) this.state.ships.splice(carrierIndex, 1);
+          this.addCombatLog('Empty vehicle ferry has cleared the western boundary.', carrier.team);
+        }
+      }
+      return;
+    }
 
     if (!am.isCarrierBeached) {
       const distToDock = Math.hypot(
@@ -2390,6 +2458,27 @@ export class BattleEngine {
           carrier.team
         );
       }
+    }
+
+    const hasRemainingCargo = this.state.ships.some(ship =>
+      ship.carrierId === carrier.id
+      && ship.isOnboardCarrier
+      && !ship.isSunk
+    );
+    const hasActiveRampVehicle = this.state.ships.some(ship =>
+      ship.carrierId === carrier.id
+      && ship.isDeployingFromCarrier
+      && !ship.isSunk
+    );
+    if (am.isCarrierBeached && !am.isDeploying && !hasRemainingCargo && !hasActiveRampVehicle) {
+      am.carrierExitPhase = 'backing-off';
+      carrier.hasSurfaceWeapons = false;
+      carrier.hasAirWeapons = false;
+      carrier.aiTargetId = undefined;
+      carrier.cooldowns = {};
+      carrier.targetRudderAngle = 0;
+      carrier.targetSpeedLevel = -1;
+      this.addCombatLog('All surviving assault vehicles deployed. Empty ferry is withdrawing from the beachhead.', carrier.team);
     }
   }
 
@@ -2549,17 +2638,22 @@ export class BattleEngine {
       }
 
       const attackerTeam: Team = isPlayerAttacker ? 'player' : 'enemy';
-      const livingAttackers = this.state.ships.filter(s => s.team === attackerTeam && !s.isSunk);
-      if (am.isCarrierDestroyed && livingAttackers.length === 0) {
+      const livingAttackers = this.state.ships.filter(s =>
+        s.team === attackerTeam
+        && s.id !== am.carrierShipId
+        && !s.isSunk
+        && !s.isDocked
+      );
+      if (livingAttackers.length === 0) {
         this.state.gameOver = true;
         this.state.winner = isPlayerAttacker ? 'enemy' : 'player';
         this.state.winReason = 'defense_successful';
         if (isPlayerAttacker) {
           sounds.playDefeat();
-          this.addCombatLog('Defeat! Amphibious assault repelled! Vehicle ferry lost and landing forces eliminated.', 'enemy');
+          this.addCombatLog('Defeat! Amphibious assault combat forces eliminated before the coastal fortress fell.', 'enemy');
         } else {
           sounds.playVictory();
-          this.addCombatLog('Coastal Fortress Defended! Hostile vehicle ferry and assault forces annihilated!', 'player');
+          this.addCombatLog('Coastal Fortress Defended! All hostile assault combat forces have been eliminated!', 'player');
         }
         return;
       }
@@ -3159,9 +3253,10 @@ export class BattleEngine {
     if (!hitIsland) {
       const isFixedConvoyVehicle = this.state.gameMode === 'transport-protection'
         && (ship.isConvoyTruck || !!ship.convoyEscortPosition);
-      if (isFixedConvoyVehicle) {
+      if (isFixedConvoyVehicle || this.isExitingAmphibiousFerry(ship)) {
         // The authored convoy road intentionally continues beyond the chart.
-        // Allow mission vehicles to be clipped naturally as they drive out.
+        // Mode 4's empty ferry likewise leaves through the western chart edge.
+        // Allow these mission vehicles to be clipped naturally as they drive out.
         ship.x = nextX;
         ship.y = nextY;
       } else {
@@ -3429,8 +3524,56 @@ export class BattleEngine {
     return false;
   }
 
+  private findMode4WaterApproachPoint(ship: ShipEntity, targetX: number, targetY: number): { x: number; y: number } {
+    const preferredRange = Math.max(260, Math.min(720, (ship.stats.effectiveRange || 580) * 0.78));
+    const radii = [preferredRange, 480, 680, 900, 1150, 1450]
+      .filter((radius, index, values) => values.findIndex(value => Math.abs(value - radius) < 25) === index);
+    const baseAngle = Math.atan2(ship.y - targetY, ship.x - targetX);
+    const angleOffsets = [0, -0.28, 0.28, -0.58, 0.58, -0.92, 0.92, -1.3, 1.3, Math.PI];
+    const requiredShoreClearance = Math.max(75, ship.model.hullWidth * 0.85);
+    let bestPoint: { x: number; y: number } | undefined;
+    let bestScore = Infinity;
+
+    for (const radius of radii) {
+      for (const angleOffset of angleOffsets) {
+        const angle = baseAngle + angleOffset;
+        const candidate = {
+          x: targetX + Math.cos(angle) * radius,
+          y: targetY + Math.sin(angle) * radius,
+        };
+        if (candidate.x < 110 || candidate.x > this.state.arenaWidth - 110
+          || candidate.y < 110 || candidate.y > this.state.arenaHeight - 110) continue;
+
+        let shorelineClearance = Infinity;
+        let onLand = false;
+        for (const island of this.state.islands) {
+          const clearance = getPointPolygonDistance(candidate.x, candidate.y, island.points);
+          if (clearance.isInside) {
+            onLand = true;
+            break;
+          }
+          shorelineClearance = Math.min(shorelineClearance, clearance.distance);
+        }
+        if (onLand || shorelineClearance < requiredShoreClearance) continue;
+
+        const travelDistance = Math.hypot(candidate.x - ship.x, candidate.y - ship.y);
+        const score = radius * 1.8 + travelDistance * 0.28 + Math.abs(angleOffset) * 75;
+        if (score < bestScore) {
+          bestScore = score;
+          bestPoint = candidate;
+        }
+      }
+    }
+
+    return bestPoint || {
+      x: this.state.amphibiousMission?.ferryDeploymentPoint.x ?? this.state.arenaWidth * 0.55,
+      y: this.state.amphibiousMission?.ferryDeploymentPoint.y ?? this.state.arenaHeight * 0.5,
+    };
+  }
+
   private updateNpcAi(ship: ShipEntity, dt: number) {
     if (ship.isOnboardCarrier) return;
+    if (this.isExitingAmphibiousFerry(ship)) return;
     // Fixed Mode 3 convoy movement and defensive gunnery are driven by
     // updateTransportMission so combat AI cannot pull them off the road.
     if (this.state.gameMode === 'transport-protection' && (ship.isConvoyTruck || ship.convoyEscortPosition)) {
@@ -3450,7 +3593,11 @@ export class BattleEngine {
     // Land vehicles and ships can ONLY attack aircraft if equipped with an air-targeting weapon.
     const targetTeam = ship.team === 'player' ? 'enemy' : 'player';
     const allHostiles = this.state.ships.filter(s =>
-      s.team === targetTeam && !s.isSunk && !s.isDocked && !s.isOnboardCarrier
+      s.team === targetTeam
+      && !s.isSunk
+      && !s.isDocked
+      && !s.isOnboardCarrier
+      && !this.isExitingAmphibiousFerry(s)
     );
 
     // AI Aircraft Operations:
@@ -3606,6 +3753,16 @@ export class BattleEngine {
     const friendlyCommandStation = this.state.gameMode === 'command-station'
       ? this.state.commandStations?.find(cs => cs.team === ship.team && !cs.isDestroyed)
       : undefined;
+    const amphibiousMission = this.state.gameMode === 'amphibious-assault'
+      ? this.state.amphibiousMission
+      : undefined;
+    const amphibiousAttackerTeam: Team | undefined = amphibiousMission
+      ? (this.state.playerRole === 'attacker' ? 'player' : 'enemy')
+      : undefined;
+    const isAmphibiousAttacker = !!amphibiousMission
+      && ship.team === amphibiousAttackerTeam
+      && ship.id !== amphibiousMission.carrierShipId;
+    const isAmphibiousDefender = !!amphibiousMission && ship.team !== amphibiousAttackerTeam;
     const enemyConvoyTruck = this.state.gameMode === 'transport-protection' && ship.team === 'enemy' && canEngageSurface
       ? this.state.ships.find(s => s.id === this.state.transportMission?.truckShipId && !s.isSunk)
       : undefined;
@@ -3665,8 +3822,18 @@ export class BattleEngine {
           ? 'chase'
           : 'attack';
     }
+    if (isAmphibiousAttacker) {
+      // Mode 4 attackers are an assault force. Their platform role affects how
+      // they fight en route, but never replaces the fortress as their mission.
+      activeStrategicRole = 'attacker';
+      ship.aiState = 'attack';
+    }
 
-    if (hostiles.length === 0 && !enemyCommandStation && !enemyConvoyTruck && !friendlyConvoyTruck) {
+    if (hostiles.length === 0
+      && !enemyCommandStation
+      && !enemyConvoyTruck
+      && !friendlyConvoyTruck
+      && !amphibiousMission) {
       // No targets left, return to gentle center cruise
       if (ship.domain === 'land') {
         const myIsland = this.landPathfinder.findLandLocation(ship.x, ship.y).island || this.state.islands[0];
@@ -3712,6 +3879,22 @@ export class BattleEngine {
         missionBonus = ship.tacticalRole === 'attacker' ? 2200 : 850;
       }
 
+      if (amphibiousMission) {
+        const threatDistanceToFortress = Math.hypot(
+          h.x - amphibiousMission.commandCenter.x,
+          h.y - amphibiousMission.commandCenter.y
+        );
+        if (isAmphibiousDefender) {
+          // Defenders converge on attackers that are actually advancing on the
+          // fortress instead of lingering at spawn to chase incidental fly-bys.
+          missionBonus += Math.max(0, 2600 - threatDistanceToFortress) * 0.95;
+          if (h.domain === 'air' && threatDistanceToFortress > 1700) missionBonus -= 2600;
+        } else if (isAmphibiousAttacker) {
+          const isBlockingAdvance = h.aiTargetId === ship.id || threatDistanceToFortress < 1250;
+          missionBonus += isBlockingAdvance ? 420 : -220;
+        }
+      }
+
       if (enemyCommandStation && friendlyCommandStation) {
         if (activeStrategicRole === 'defender') {
           const threatDistance = Math.hypot(h.x - friendlyCommandStation.x, h.y - friendlyCommandStation.y);
@@ -3734,6 +3917,24 @@ export class BattleEngine {
       }
     }
 
+    if (!target && isAmphibiousDefender && allHostiles.length > 0) {
+      // Domain-specialized ships still advance with the defense even when none
+      // of the current attackers match their weapons. They screen the most
+      // dangerous approach instead of idling at their original spawn.
+      target = [...allHostiles].sort((a, b) => {
+        const aFortressDistance = Math.hypot(
+          a.x - amphibiousMission!.commandCenter.x,
+          a.y - amphibiousMission!.commandCenter.y
+        );
+        const bFortressDistance = Math.hypot(
+          b.x - amphibiousMission!.commandCenter.x,
+          b.y - amphibiousMission!.commandCenter.y
+        );
+        return aFortressDistance - bFortressDistance;
+      })[0];
+      minDist = Math.hypot(target.x - ship.x, target.y - ship.y);
+    }
+
     const tacticalTarget = target;
     const tacticalTargetDistance = minDist;
 
@@ -3751,7 +3952,21 @@ export class BattleEngine {
         ? tacticalTarget
         : undefined;
 
-      if (stationThreat && (activeStrategicRole === 'defender' || ownHpRatio < 0.6)) {
+      const assaultBlockingThreat = isAmphibiousAttacker && tacticalTarget
+        && (tacticalTargetDistance < 300
+          || (tacticalTarget.aiTargetId === ship.id && tacticalTargetDistance < 480))
+        ? tacticalTarget
+        : undefined;
+
+      if (isAmphibiousAttacker) {
+        // Engage immediate blockers, then resume the advance instead of being
+        // drawn into a prolonged team-elimination fight.
+        target = assaultBlockingThreat || {
+          x: enemyCommandStation.x,
+          y: enemyCommandStation.y,
+          domain: 'land',
+        } as ShipEntity;
+      } else if (stationThreat && (activeStrategicRole === 'defender' || ownHpRatio < 0.6)) {
         target = stationThreat;
       } else if (activeStrategicRole === 'defender' && friendlyCommandStation) {
         // Hold a mobile defensive orbit around the home station until a threat
@@ -3834,6 +4049,7 @@ export class BattleEngine {
       target = friendlyConvoyTruck;
       minDist = Math.hypot(target.x - ship.x, target.y - ship.y);
     } else {
+      if (amphibiousMission) ship.aiTargetId = undefined;
       return;
     }
 
@@ -3842,6 +4058,17 @@ export class BattleEngine {
     // than duels: escorts break contact when either they or the fight falls behind.
     let movementTarget: Pick<ShipEntity, 'x' | 'y' | 'domain'> = target;
     let convoyCatchUp = false;
+    if (amphibiousMission && ship.domain === 'water') {
+      const targetIsOnLand = this.state.islands.some(island =>
+        isPointInPolygon(movementTarget.x, movementTarget.y, island.points)
+      );
+      if (targetIsOnLand) {
+        movementTarget = {
+          ...this.findMode4WaterApproachPoint(ship, movementTarget.x, movementTarget.y),
+          domain: 'water',
+        };
+      }
+    }
     if (friendlyConvoyTruck) {
       const convoyDistance = Math.hypot(friendlyConvoyTruck.x - ship.x, friendlyConvoyTruck.y - ship.y);
       const headingX = Math.cos(friendlyConvoyTruck.angle);
@@ -4199,7 +4426,8 @@ export class BattleEngine {
     // Tactical escort and screening behavior
     if (activeStrategicRole === 'defender'
       && this.state.gameMode !== 'command-station'
-      && this.state.gameMode !== 'transport-protection') {
+      && this.state.gameMode !== 'transport-protection'
+      && this.state.gameMode !== 'amphibious-assault') {
       const friendlyLead = this.state.ships.find(s => s.team === ship.team && s.id !== ship.id && !s.isSunk);
       if (friendlyLead && Math.hypot(friendlyLead.x - ship.x, friendlyLead.y - ship.y) > 380) {
         navTargetX = (friendlyLead.x + target.x) * 0.5;
@@ -4576,7 +4804,12 @@ export class BattleEngine {
     // Determine target category based on active targeting mode
     const targetMode = ship.weaponTargetMode || 'surface';
     const targetTeam = ship.team === 'player' ? 'enemy' : 'player';
-    const hostiles = this.state.ships.filter(s => s.team === targetTeam && !s.isSunk && !s.isOnboardCarrier);
+    const hostiles = this.state.ships.filter(s =>
+      s.team === targetTeam
+      && !s.isSunk
+      && !s.isOnboardCarrier
+      && !this.isExitingAmphibiousFerry(s)
+    );
     
     // First find nearest hostile matching the current weapon target mode
     const domainHostiles = hostiles.filter(h => targetMode === 'air' ? h.domain === 'air' : h.domain !== 'air');

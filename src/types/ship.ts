@@ -638,6 +638,8 @@ export interface AmphibiousMissionState {
   deployTimer: number;
   carrierHp: number;
   carrierMaxHp: number;
+  carrierExitPhase?: 'backing-off' | 'returning' | 'exited';
+  carrierExitY: number;
 }
 
 export interface BattleSettings {
