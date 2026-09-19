@@ -138,7 +138,7 @@ export const HistoryAchievementsView: React.FC<HistoryAchievementsViewProps> = (
   };
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100">
+    <div className={`${tab === 'battles' ? 'flex h-dvh flex-col overflow-hidden' : 'min-h-screen'} bg-stone-950 text-stone-100`}>
       <header className="sticky top-0 z-30 border-b border-stone-800 bg-stone-950/95 px-4 py-3 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -150,8 +150,8 @@ export const HistoryAchievementsView: React.FC<HistoryAchievementsViewProps> = (
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl p-4 lg:p-8">
-        <nav className="mb-6 flex gap-2 overflow-x-auto">
+      <main className={`mx-auto w-full max-w-7xl p-4 lg:p-8 ${tab === 'battles' ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}`}>
+        <nav className="mb-6 flex shrink-0 gap-2 overflow-x-auto">
           {([
             ['overview', BarChart3, 'Career Overview'],
             ['battles', History, `Battle History (${records.length})`],
@@ -184,10 +184,10 @@ export const HistoryAchievementsView: React.FC<HistoryAchievementsViewProps> = (
 
         {tab === 'battles' && (
           records.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-stone-700 bg-stone-900/40 p-14 text-center"><Shield className="mx-auto h-10 w-10 text-stone-600" /><h2 className="mt-4 font-bold">No completed battles yet</h2><p className="mt-1 text-sm text-stone-500">Completed deployments will be recorded here automatically.</p></div>
+            <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-stone-700 bg-stone-900/40 p-14 text-center"><Shield className="h-10 w-10 text-stone-600" /><h2 className="mt-4 font-bold">No completed battles yet</h2><p className="mt-1 text-sm text-stone-500">Completed deployments will be recorded here automatically.</p></div>
           ) : (
-            <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-              <div className="space-y-2">
+            <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-5 overflow-hidden lg:grid-cols-[360px_1fr] lg:grid-rows-1">
+              <div className="min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-2" tabIndex={0} aria-label="Battle history list">
                 {records.map(record => (
                   <button key={record.id} onClick={() => setSelectedId(record.id)} className={`w-full rounded-2xl border p-4 text-left transition ${selectedId === record.id ? 'border-amber-500/70 bg-amber-500/10' : 'border-stone-800 bg-stone-900/70 hover:border-stone-700'}`}>
                     <div className="flex items-center justify-between"><span className={`text-[10px] font-black uppercase ${record.result === 'victory' ? 'text-emerald-400' : 'text-red-400'}`}>{record.result}</span><span className="text-[10px] text-stone-500">{formatGameDate(record.timestamp)}</span></div>
@@ -197,7 +197,9 @@ export const HistoryAchievementsView: React.FC<HistoryAchievementsViewProps> = (
                   </button>
                 ))}
               </div>
-              {selected && <BattleDetail record={selected} onDelete={() => removeRecord(selected.id)} />}
+              <div className="min-h-0 overflow-y-auto overscroll-contain pr-2" tabIndex={0} aria-label="Selected battle details">
+                {selected && <BattleDetail record={selected} onDelete={() => removeRecord(selected.id)} />}
+              </div>
             </div>
           )
         )}
