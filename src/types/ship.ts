@@ -640,6 +640,7 @@ export interface AmphibiousMissionState {
   carrierMaxHp: number;
   carrierExitPhase?: 'backing-off' | 'returning' | 'exited';
   carrierExitY: number;
+  carrierExitTurnDirection?: -1 | 1;
 }
 
 export interface BattleSettings {

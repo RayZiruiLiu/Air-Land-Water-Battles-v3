@@ -2308,6 +2308,36 @@ export class BattleEngine {
       && (!!mission.carrierExitPhase || deploymentHasFinished);
   }
 
+  private chooseFerryExitTurnDirection(carrier: ShipEntity, mission: AmphibiousMissionState): -1 | 1 {
+    const approachX = Math.cos(mission.shoreApproachAngle);
+    const approachY = Math.sin(mission.shoreApproachAngle);
+    const reverseX = -approachX;
+    const reverseY = -approachY;
+    const reverseLeftX = -reverseY;
+    const reverseLeftY = reverseX;
+
+    const scoreDirection = (direction: -1 | 1) => {
+      const candidateX = carrier.x + reverseX * 190 + reverseLeftX * direction * 105;
+      const candidateY = carrier.y + reverseY * 190 + reverseLeftY * direction * 105;
+      let clearance = Infinity;
+      for (const island of this.state.islands) {
+        const coast = getPointPolygonDistance(candidateX, candidateY, island.points);
+        if (coast.isInside) return -10000;
+        clearance = Math.min(clearance, coast.distance);
+      }
+      const boundaryClearance = Math.min(
+        candidateX,
+        this.state.arenaWidth - candidateX,
+        candidateY,
+        this.state.arenaHeight - candidateY
+      );
+      const returnLanePenalty = Math.abs(candidateY - mission.carrierExitY) * 0.08;
+      return Math.min(clearance, boundaryClearance) - returnLanePenalty;
+    };
+
+    return scoreDirection(1) >= scoreDirection(-1) ? 1 : -1;
+  }
+
   private updateAmphibiousMission(dt: number) {
     if (!this.state.amphibiousMission) return;
     const am = this.state.amphibiousMission;
@@ -2337,13 +2367,21 @@ export class BattleEngine {
         const approachY = Math.sin(am.shoreApproachAngle);
         const retreatProgress = (am.ferryDeploymentPoint.x - carrier.x) * approachX
           + (am.ferryDeploymentPoint.y - carrier.y) * approachY;
-        carrier.targetRudderAngle = 0;
+        const retreatDistance = Math.hypot(
+          am.ferryDeploymentPoint.x - carrier.x,
+          am.ferryDeploymentPoint.y - carrier.y
+        );
+        const turnDirection = am.carrierExitTurnDirection
+          ?? this.chooseFerryExitTurnDirection(carrier, am);
+        am.carrierExitTurnDirection = turnDirection;
+        carrier.targetRudderAngle = turnDirection * 0.32;
         carrier.targetSpeedLevel = -1;
-        if (retreatProgress >= 440) {
+        const reverseClearance = carrier.model.hullLength * 0.48;
+        if (retreatDistance >= reverseClearance && retreatProgress >= carrier.model.hullLength * 0.38) {
           am.carrierExitPhase = 'returning';
           carrier.targetSpeedLevel = 1;
           carrier.aiWaypoint = undefined;
-          this.addCombatLog('Vehicle ferry is clear of the beachhead and returning west as a non-combat vessel.', carrier.team);
+          this.addCombatLog('Vehicle ferry has curved clear of the beachhead and is beginning its westbound U-turn.', carrier.team);
         }
       } else if (am.carrierExitPhase === 'returning') {
         const exitX = -carrier.model.hullLength * 0.75;
@@ -2472,11 +2510,12 @@ export class BattleEngine {
     );
     if (am.isCarrierBeached && !am.isDeploying && !hasRemainingCargo && !hasActiveRampVehicle) {
       am.carrierExitPhase = 'backing-off';
+      am.carrierExitTurnDirection = this.chooseFerryExitTurnDirection(carrier, am);
       carrier.hasSurfaceWeapons = false;
       carrier.hasAirWeapons = false;
       carrier.aiTargetId = undefined;
       carrier.cooldowns = {};
-      carrier.targetRudderAngle = 0;
+      carrier.targetRudderAngle = am.carrierExitTurnDirection * 0.32;
       carrier.targetSpeedLevel = -1;
       this.addCombatLog('All surviving assault vehicles deployed. Empty ferry is withdrawing from the beachhead.', carrier.team);
     }
