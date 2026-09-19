@@ -113,6 +113,11 @@ export function renderBattle(
   }
   if (state.gameMode === 'transport-protection') ctx.restore();
 
+  // Mode 4 cargo remains above the ferry deck, while the ferry's raised
+  // wheelhouse and its roof mount remain physically above the carried vehicles.
+  // Aircraft are intentionally drawn later and therefore stay above both.
+  drawMode4FerryWheelhouseOverlay(ctx, state);
+
   // 6.5 Draw Command Stations & Fortresses (Modes 2 & 4)
   if (state.commandStations) {
     for (const station of state.commandStations) {
@@ -2067,21 +2072,7 @@ function drawNavalSuperstructure(
 
     // Forward wheelhouse spans the beam like a working Ro-Ro ferry rather than
     // the offset island and open flight deck of an aircraft carrier.
-    ctx.fillStyle = '#d0d0c7';
-    ctx.strokeStyle = '#3f4544';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(halfL * 0.40, -halfW * 0.62, halfL * 0.22, halfW * 1.24, 5);
-    ctx.fill();
-    ctx.stroke();
-
-    // Continuous dark bridge windows across the bow-facing wheelhouse.
-    ctx.fillStyle = '#263235';
-    ctx.fillRect(halfL * 0.57, -halfW * 0.51, 5, halfW * 1.02);
-    for (let y = -halfW * 0.42; y <= halfW * 0.42; y += Math.max(10, halfW * 0.22)) {
-      ctx.fillStyle = '#809095';
-      ctx.fillRect(halfL * 0.58, y, 3, Math.max(5, halfW * 0.12));
-    }
+    drawFerryWheelhouse(ctx, halfL, halfW);
 
     // Twin exhaust stacks and a ferry-specific fixed navigation mast.
     ctx.fillStyle = '#343937';
@@ -5601,6 +5592,61 @@ export function drawMissionObjectives(ctx: CanvasRenderingContext2D, state: Batt
     ctx.fillText(am.isCarrierBeached ? 'BEACHHEAD SECURED (DEPLOYING)' : 'LANDING ZONE BEACHHEAD', 0, -lz.radius - 12);
     ctx.restore();
   }
+}
+
+function drawFerryWheelhouse(ctx: CanvasRenderingContext2D, halfL: number, halfW: number) {
+  ctx.fillStyle = '#d0d0c7';
+  ctx.strokeStyle = '#3f4544';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(halfL * 0.40, -halfW * 0.62, halfL * 0.22, halfW * 1.24, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  // Continuous dark bridge windows across the bow-facing wheelhouse.
+  ctx.fillStyle = '#263235';
+  ctx.fillRect(halfL * 0.57, -halfW * 0.51, 5, halfW * 1.02);
+  for (let y = -halfW * 0.42; y <= halfW * 0.42; y += Math.max(10, halfW * 0.22)) {
+    ctx.fillStyle = '#809095';
+    ctx.fillRect(halfL * 0.58, y, 3, Math.max(5, halfW * 0.12));
+  }
+}
+
+function drawMode4FerryWheelhouseOverlay(ctx: CanvasRenderingContext2D, state: BattleState) {
+  if (state.gameMode !== 'amphibious-assault' || !state.amphibiousMission) return;
+  const ferry = state.ships.find(ship => ship.id === state.amphibiousMission!.carrierShipId);
+  if (!ferry || ferry.model.spriteStyle.bodyStyle !== 'vehicle-ferry') return;
+  const hasDeckCargo = state.ships.some(ship =>
+    ship.carrierId === ferry.id
+    && (ship.isOnboardCarrier || ship.isDeployingFromCarrier)
+  );
+  if (!hasDeckCargo) return;
+
+  const halfL = ferry.model.hullLength * 0.5;
+  const halfW = ferry.model.hullWidth * 0.5;
+  ctx.save();
+  ctx.translate(ferry.x, ferry.y);
+  ctx.rotate(ferry.angle);
+  if (ferry.isSunk) {
+    ctx.globalAlpha = Math.max(0.18, 1 - ferry.sinkProgress * 0.82);
+    ctx.rotate(ferry.sinkProgress * 0.25);
+  }
+  drawFerryWheelhouse(ctx, halfL, halfW);
+
+  // Preserve the wheelhouse's original internal ordering: its light roof mount
+  // remains above the bridge graphic, without lifting the rest of the ferry.
+  for (const hp of ferry.model.hardpoints.filter(hardpoint => hardpoint.x >= 0.35)) {
+    const componentId = ferry.config.equippedComponents[hp.id];
+    drawModernWeapon(
+      ctx,
+      hp.x * halfL,
+      hp.y * halfW,
+      hp.allowedArc,
+      componentId || null,
+      ferry.team
+    );
+  }
+  ctx.restore();
 }
 
 function drawExtractionZoneIndicator(ctx: CanvasRenderingContext2D, state: BattleState) {

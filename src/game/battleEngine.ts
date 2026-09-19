@@ -4097,6 +4097,66 @@ export class BattleEngine {
     // than duels: escorts break contact when either they or the fight falls behind.
     let movementTarget: Pick<ShipEntity, 'x' | 'y' | 'domain'> = target;
     let convoyCatchUp = false;
+    let amphibiousShipMustReposition = false;
+    if (amphibiousMission && ship.domain === 'water') {
+      const ferry = this.state.ships.find(candidate =>
+        candidate.id === amphibiousMission.carrierShipId && !candidate.isSunk
+      );
+
+      if (isAmphibiousAttacker && ferry && !amphibiousMission.isCarrierBeached) {
+        // Advance in a moving two-sided screen around the ferry from the first
+        // update. Combat targeting remains independent, so escorts can fire at
+        // blockers without abandoning the landing formation.
+        const idSeed = Array.from(ship.id).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+        const side = idSeed % 2 === 0 ? 1 : -1;
+        const approachDx = amphibiousMission.ferryDeploymentPoint.x - ferry.x;
+        const approachDy = amphibiousMission.ferryDeploymentPoint.y - ferry.y;
+        const approachLength = Math.hypot(approachDx, approachDy) || 1;
+        const headingX = approachDx / approachLength;
+        const headingY = approachDy / approachLength;
+        const leadDistance = 230 + (idSeed % 3) * 55;
+        const lateralDistance = 235 + (idSeed % 2) * 70;
+        movementTarget = {
+          x: ferry.x + headingX * leadDistance - headingY * side * lateralDistance,
+          y: ferry.y + headingY * leadDistance + headingX * side * lateralDistance,
+          domain: 'water',
+        };
+        amphibiousShipMustReposition = Math.hypot(
+          movementTarget.x - ship.x,
+          movementTarget.y - ship.y
+        ) > 260;
+      } else if (isAmphibiousDefender) {
+        // Movement follows the main surface assault, not whichever aircraft is
+        // momentarily closest. The ferry remains a valid interception anchor
+        // until beaching; afterward, the most threatening surviving surface
+        // attacker continuously becomes the new anchor.
+        const surfaceThreats = allHostiles.filter(hostile => hostile.domain !== 'air');
+        const strategicThreatPool = surfaceThreats.length > 0 ? surfaceThreats : allHostiles;
+        const strategicThreat = [...strategicThreatPool].sort((a, b) => {
+          const aFortressDistance = Math.hypot(
+            a.x - amphibiousMission.commandCenter.x,
+            a.y - amphibiousMission.commandCenter.y
+          );
+          const bFortressDistance = Math.hypot(
+            b.x - amphibiousMission.commandCenter.x,
+            b.y - amphibiousMission.commandCenter.y
+          );
+          const aShipDistance = Math.hypot(a.x - ship.x, a.y - ship.y);
+          const bShipDistance = Math.hypot(b.x - ship.x, b.y - ship.y);
+          const aFerryPriority = !amphibiousMission.isCarrierBeached && a.id === ferry?.id ? -650 : 0;
+          const bFerryPriority = !amphibiousMission.isCarrierBeached && b.id === ferry?.id ? -650 : 0;
+          return (aFortressDistance * 0.72 + aShipDistance * 0.28 + aFerryPriority)
+            - (bFortressDistance * 0.72 + bShipDistance * 0.28 + bFerryPriority);
+        })[0];
+        if (strategicThreat) {
+          movementTarget = strategicThreat;
+          amphibiousShipMustReposition = Math.hypot(
+            strategicThreat.x - ship.x,
+            strategicThreat.y - ship.y
+          ) > 320;
+        }
+      }
+    }
     if (amphibiousMission && ship.domain === 'water') {
       const targetIsOnLand = this.state.islands.some(island =>
         isPointInPolygon(movementTarget.x, movementTarget.y, island.points)
@@ -4531,6 +4591,16 @@ export class BattleEngine {
       // escort cannot keep circling a fight that the convoy has already left.
       ship.combatManeuver = 'approach';
       ship.preferredBroadside = undefined;
+      goalAngle = directAngle;
+      ship.targetSpeedLevel = 2;
+    }
+
+    if (amphibiousShipMustReposition) {
+      // Mission positioning outranks local range-keeping. This changes only
+      // intent/throttle state; every ship retains its authored speed and turn rate.
+      ship.combatManeuver = 'approach';
+      ship.preferredBroadside = undefined;
+      ship.evasionTurnDir = undefined;
       goalAngle = directAngle;
       ship.targetSpeedLevel = 2;
     }
