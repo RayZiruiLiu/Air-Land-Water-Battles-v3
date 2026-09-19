@@ -157,6 +157,13 @@ export interface BattleState {
     shipsSunk: number;
     shotsFired: number;
     shotsHit: number;
+    killsByDomain: Record<VehicleDomain, number>;
+  };
+  achievementTelemetry: {
+    playerFinalBlowCommandStation: boolean;
+    playerFinalBlowConvoy: boolean;
+    playerDeployedFromFerry: boolean;
+    soloFighterQualified: boolean;
   };
   gameMode: GameMode;
   commandStations?: CommandStationEntity[];
@@ -1227,6 +1234,13 @@ export class BattleEngine {
         shipsSunk: 0,
         shotsFired: 0,
         shotsHit: 0,
+        killsByDomain: { land: 0, water: 0, air: 0 },
+      },
+      achievementTelemetry: {
+        playerFinalBlowCommandStation: false,
+        playerFinalBlowConvoy: false,
+        playerDeployedFromFerry: false,
+        soloFighterQualified: false,
       },
       gameMode,
       commandStations,
@@ -2533,6 +2547,14 @@ export class BattleEngine {
     }
 
     const fatal = station.hp <= 0;
+    if (
+      fatal
+      && !station.isDestroyed
+      && projectile.sourceShipId === this.state.playerShipId
+      && station.team !== this.getPlayerShip()?.team
+    ) {
+      this.state.achievementTelemetry.playerFinalBlowCommandStation = true;
+    }
     station.isDestroyed = fatal;
 
     for (let i = 0; i < (fatal ? 24 : 6); i++) {
@@ -2595,6 +2617,8 @@ export class BattleEngine {
 
   private checkGameOverConditions() {
     if (this.state.gameOver) return;
+
+    this.updateSoloFighterQualification();
 
     const livingPlayers = this.state.ships.filter(s => s.team === 'player' && !s.isSunk && !s.isDocked);
     const livingEnemies = this.state.ships.filter(s => s.team === 'enemy' && !s.isSunk && !s.isDocked);
@@ -2714,6 +2738,28 @@ export class BattleEngine {
     }
   }
 
+  private updateSoloFighterQualification() {
+    if (this.state.achievementTelemetry.soloFighterQualified) return;
+    if (!['fleet-battle', 'command-station', 'amphibious-assault'].includes(this.state.gameMode)) return;
+
+    const player = this.getPlayerShip();
+    if (!player || player.isSunk) return;
+    const ferryId = this.state.amphibiousMission?.carrierShipId;
+    const isCombatMember = (ship: ShipEntity) =>
+      !ship.isSunk && !ship.isDocked && ship.id !== ferryId;
+    const friendlyLiving = this.state.ships.filter(
+      ship => ship.team === player.team && isCombatMember(ship)
+    ).length;
+    const enemyLiving = this.state.ships.filter(
+      ship => ship.team !== player.team && isCombatMember(ship)
+    ).length;
+
+    if (friendlyLiving === 1 && enemyLiving >= 6) {
+      this.state.achievementTelemetry.soloFighterQualified = true;
+      this.addCombatLog('Last combatant standing: survive the engagement and secure victory!', player.team);
+    }
+  }
+
   private updateShip(ship: ShipEntity, dt: number) {
     if (ship.isSunk) {
       ship.sinkProgress = Math.min(1, ship.sinkProgress + dt * 0.3);
@@ -2784,6 +2830,9 @@ export class BattleEngine {
         ship.carrierDeploymentProgress = undefined;
         ship.carrierDeploymentDuration = undefined;
         ship.targetSpeedLevel = ship.isPlayer ? 0 : 2;
+        if (ship.isPlayer) {
+          this.state.achievementTelemetry.playerDeployedFromFerry = true;
+        }
         const mission = this.state.amphibiousMission;
         if (mission) {
           mission.deployedUnitsCount++;
@@ -5374,6 +5423,10 @@ export class BattleEngine {
 
     if (killer?.isPlayer) {
       this.state.stats.shipsSunk++;
+      this.state.stats.killsByDomain[ship.domain]++;
+      if (ship.id === this.state.transportMission?.truckShipId) {
+        this.state.achievementTelemetry.playerFinalBlowConvoy = true;
+      }
     }
 
     this.addCombatLog(

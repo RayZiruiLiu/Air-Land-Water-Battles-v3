@@ -1,4 +1,6 @@
 import {
+  AchievementId,
+  AchievementProgress,
   BattleSettings,
   CustomShipConfig,
   GameHistorySummary,
@@ -12,6 +14,8 @@ import { TRAILER_MAP } from '../data/trailers';
 import { BATTLE_MAP_MAP } from '../data/battleMaps';
 
 const STORAGE_KEY_GAME_HISTORY = 'naval_architect_game_history';
+const STORAGE_KEY_ACHIEVEMENTS = 'naval_architect_achievements_v1';
+const STORAGE_KEY_CAREER = 'naval_architect_career_stats_v1';
 
 /**
  * Default sample game history records so that the interface immediately
@@ -213,9 +217,7 @@ export function getGameHistory(): GameRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_GAME_HISTORY);
     if (!raw) {
-      // Seed with initial realistic records so the interface is immediately functional
-      localStorage.setItem(STORAGE_KEY_GAME_HISTORY, JSON.stringify(DEFAULT_SAMPLE_HISTORY));
-      return DEFAULT_SAMPLE_HISTORY;
+      return [];
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -224,20 +226,21 @@ export function getGameHistory(): GameRecord[] {
   } catch (err) {
     console.warn('Failed to parse stored game history:', err);
   }
-  return DEFAULT_SAMPLE_HISTORY;
+  return [];
 }
 
 /**
  * Saves a new game record to the top of the history list.
- * Limits history length to the 100 most recent operations.
+ * Keeps the complete persistent service record so career totals remain cumulative.
  */
 export function saveGameRecord(record: GameRecord): void {
   try {
     const existing = getGameHistory();
     // Guard against duplicate ID
     const filtered = existing.filter(r => r.id !== record.id);
-    const updated = [record, ...filtered].slice(0, 100);
+    const updated = [record, ...filtered];
     localStorage.setItem(STORAGE_KEY_GAME_HISTORY, JSON.stringify(updated));
+    persistCareerAndAchievements(updated);
   } catch (err) {
     console.error('Failed to save game record:', err);
   }
@@ -251,6 +254,7 @@ export function deleteGameRecord(id: string): void {
     const existing = getGameHistory();
     const updated = existing.filter(r => r.id !== id);
     localStorage.setItem(STORAGE_KEY_GAME_HISTORY, JSON.stringify(updated));
+    persistCareerAndAchievements(updated);
   } catch (err) {
     console.error('Failed to delete game record:', err);
   }
@@ -262,6 +266,7 @@ export function deleteGameRecord(id: string): void {
 export function clearGameHistory(): void {
   try {
     localStorage.setItem(STORAGE_KEY_GAME_HISTORY, JSON.stringify([]));
+    persistCareerAndAchievements([]);
   } catch (err) {
     console.error('Failed to clear game history:', err);
   }
@@ -391,9 +396,15 @@ export function createGameRecordFromBattle(
 
   // Allied & enemy counts
   const playerTeam = playerShip?.team || 'player';
-  const alliedShips = state.ships.filter(s => s.team === playerTeam && !s.isDocked);
+  const missionVehicleIds = new Set([
+    state.amphibiousMission?.carrierShipId,
+    state.transportMission?.truckShipId,
+    state.transportMission?.frontHummerShipId,
+    state.transportMission?.rearHummerShipId,
+  ].filter((id): id is string => !!id));
+  const alliedShips = state.ships.filter(s => s.team === playerTeam && !s.isDocked && !missionVehicleIds.has(s.id));
   const alliedRemaining = alliedShips.filter(s => !s.isSunk).length;
-  const enemyShips = state.ships.filter(s => s.team !== playerTeam && !s.isDocked);
+  const enemyShips = state.ships.filter(s => s.team !== playerTeam && !s.isDocked && !missionVehicleIds.has(s.id));
   const enemyRemaining = enemyShips.filter(s => !s.isSunk).length;
 
   // Extract top highlights from combat log
@@ -410,10 +421,27 @@ export function createGameRecordFromBattle(
     );
   }
 
-  const winReason =
-    state.winReason === 'annihilation'
-      ? (result === 'victory' ? 'Hostile forces completely eliminated' : 'All allied units lost in action')
-      : (result === 'victory' ? 'Tactical victory achieved' : 'Forces neutralized');
+  const winReasonByCode: Record<string, string> = {
+    annihilation: result === 'victory' ? 'Hostile forces completely eliminated' : 'All allied units lost in action',
+    command_station_destroyed: result === 'victory' ? 'Enemy command station destroyed' : 'Friendly command station destroyed',
+    transport_delivered: result === 'victory' ? 'Convoy reached extraction' : 'Enemy convoy reached extraction',
+    transport_destroyed: result === 'victory' ? 'Convoy semi-truck destroyed' : 'Convoy semi-truck lost',
+    assault_successful: result === 'victory' ? 'Amphibious assault succeeded' : 'Coastal command station destroyed',
+    defense_successful: result === 'victory' ? 'Amphibious assault defeated' : 'Assault force eliminated',
+  };
+  const winReason = winReasonByCode[state.winReason || ''] || (result === 'victory' ? 'Tactical victory achieved' : 'Forces neutralized');
+
+  const friendlyStation = state.gameMode === 'command-station'
+    ? state.commandStations?.find(station => station.team === playerTeam)
+    : state.gameMode === 'amphibious-assault' && settings.playerRole === 'defender'
+      ? state.amphibiousMission?.commandCenter
+      : undefined;
+  const enemyStation = state.gameMode === 'command-station'
+    ? state.commandStations?.find(station => station.team !== playerTeam)
+    : undefined;
+  const convoyTruck = state.transportMission
+    ? state.ships.find(ship => ship.id === state.transportMission?.truckShipId)
+    : undefined;
 
   return {
     id: `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -421,6 +449,8 @@ export function createGameRecordFromBattle(
     result,
     winReason,
     durationSeconds: Math.max(1, Math.round(state.time)),
+    playerTeam,
+    playerRole: state.gameMode === 'fleet-battle' ? undefined : (settings.playerRole || 'defender'),
     vehicle: {
       name: playerConfig.name || model?.name || 'Custom Combat Unit',
       baseModelId: playerConfig.baseModelId,
@@ -458,6 +488,23 @@ export function createGameRecordFromBattle(
       accuracy,
       score,
       grade,
+      killsByDomain: { ...state.stats.killsByDomain },
+    },
+    mission: {
+      summary: winReason,
+      playerFinalBlowCommandStation: state.achievementTelemetry.playerFinalBlowCommandStation,
+      playerFinalBlowConvoy: state.achievementTelemetry.playerFinalBlowConvoy,
+      playerDeployedFromFerry: state.achievementTelemetry.playerDeployedFromFerry,
+      soloFighterQualified: state.achievementTelemetry.soloFighterQualified,
+      friendlyCommandStationHpPercent: friendlyStation
+        ? Math.round((friendlyStation.hp / Math.max(1, friendlyStation.maxHp)) * 100)
+        : undefined,
+      enemyCommandStationDestroyed: enemyStation?.isDestroyed,
+      convoyExtracted: state.transportMission?.reachedDestination,
+      convoyDestroyed: state.transportMission?.isTruckDestroyed,
+      convoyHpPercent: convoyTruck
+        ? Math.round((convoyTruck.currentHp / Math.max(1, convoyTruck.maxHp)) * 100)
+        : undefined,
     },
     fleetOutcome: {
       alliedRemaining,
@@ -570,4 +617,195 @@ export function computeGameHistorySummary(records: GameRecord[]): GameHistorySum
     favoriteDomain,
     mostPlayedMapName,
   };
+}
+
+export interface CareerBreakdownRow {
+  id: string;
+  label: string;
+  battles: number;
+  wins: number;
+  losses: number;
+  kills: number;
+  damage: number;
+  score: number;
+}
+
+export interface CareerStatistics {
+  summary: GameHistorySummary;
+  totalScore: number;
+  objectiveVictories: number;
+  objectiveResults: Array<{ id: string; label: string; value: number }>;
+  byMode: CareerBreakdownRow[];
+  byDomain: CareerBreakdownRow[];
+  byVehicle: CareerBreakdownRow[];
+}
+
+const modeNames: Record<string, string> = {
+  'fleet-battle': 'Mode 1 — Combined Arms Tactical Annihilation',
+  'command-station': 'Mode 2 — Command Station Warfare',
+  'transport-protection': 'Mode 3 — Transport Protection',
+  'amphibious-assault': 'Mode 4 — Amphibious Assault',
+};
+
+export function getGameModeName(mode: string): string {
+  return modeNames[mode] || mode;
+}
+
+function realRecords(records: GameRecord[]): GameRecord[] {
+  return records.filter(record => !record.isSample && !record.id.startsWith('rec-sample-'));
+}
+
+function buildBreakdown(
+  records: GameRecord[],
+  keyFor: (record: GameRecord) => string,
+  labelFor: (record: GameRecord) => string
+): CareerBreakdownRow[] {
+  const rows = new Map<string, CareerBreakdownRow>();
+  for (const record of records) {
+    const id = keyFor(record);
+    const row = rows.get(id) || {
+      id,
+      label: labelFor(record),
+      battles: 0,
+      wins: 0,
+      losses: 0,
+      kills: 0,
+      damage: 0,
+      score: 0,
+    };
+    row.battles++;
+    record.result === 'victory' ? row.wins++ : row.losses++;
+    row.kills += record.performance.shipsSunk;
+    row.damage += record.performance.damageDealt;
+    row.score += record.performance.score;
+    rows.set(id, row);
+  }
+  return [...rows.values()].sort((a, b) => b.battles - a.battles || b.score - a.score);
+}
+
+export function computeCareerStatistics(records: GameRecord[]): CareerStatistics {
+  const real = realRecords(records);
+  return {
+    summary: computeGameHistorySummary(real),
+    totalScore: real.reduce((sum, record) => sum + record.performance.score, 0),
+    objectiveVictories: real.filter(record =>
+      record.result === 'victory' && record.settings.gameMode !== 'fleet-battle'
+    ).length,
+    objectiveResults: [
+      { id: 'stations', label: 'Command stations destroyed', value: real.filter(r => r.result === 'victory' && r.settings.gameMode === 'command-station' && r.mission?.enemyCommandStationDestroyed).length },
+      { id: 'escorts', label: 'Convoys extracted', value: real.filter(r => r.result === 'victory' && r.settings.gameMode === 'transport-protection' && r.playerRole === 'defender' && r.mission?.convoyExtracted).length },
+      { id: 'hunts', label: 'Convoys intercepted', value: real.filter(r => r.result === 'victory' && r.settings.gameMode === 'transport-protection' && r.playerRole === 'attacker' && r.mission?.convoyDestroyed).length },
+      { id: 'assaults', label: 'Amphibious assaults won', value: real.filter(r => r.result === 'victory' && r.settings.gameMode === 'amphibious-assault' && r.playerRole === 'attacker').length },
+      { id: 'shore-defenses', label: 'Shore defenses won', value: real.filter(r => r.result === 'victory' && r.settings.gameMode === 'amphibious-assault' && r.playerRole === 'defender').length },
+    ],
+    byMode: buildBreakdown(real, r => r.settings.gameMode, r => getGameModeName(r.settings.gameMode)),
+    byDomain: buildBreakdown(real, r => r.vehicle.domain, r => `${r.vehicle.domain[0].toUpperCase()}${r.vehicle.domain.slice(1)} vehicles`),
+    byVehicle: buildBreakdown(real, r => r.vehicle.baseModelId, r => r.vehicle.modelName || r.vehicle.name),
+  };
+}
+
+type StoredAchievementState = Partial<Record<AchievementId, number>>;
+
+const ACHIEVEMENTS: Array<Pick<AchievementProgress, 'id' | 'name' | 'description' | 'target'>> = [
+  { id: 'first-victory', name: 'First Victory', description: 'Win your first battle.', target: 1 },
+  { id: 'veteran', name: 'Veteran', description: 'Complete 25 battles.', target: 25 },
+  { id: 'untouchable', name: 'Untouchable', description: 'Win while surviving with at least 75% HP.', target: 1 },
+  { id: 'ace', name: 'Ace', description: 'Destroy 5 aircraft in one battle while flying an aircraft.', target: 5 },
+  { id: 'tank-hunter', name: 'Tank Hunter', description: 'Destroy 5 land vehicles in a single battle.', target: 5 },
+  { id: 'fleet-hunter', name: 'Fleet Hunter', description: 'Destroy 4 ships in a single battle.', target: 4 },
+  { id: 'combined-arms', name: 'Combined Arms', description: 'Win 5 battles each with land vehicles, aircraft, and ships.', target: 15 },
+  { id: 'breakthrough', name: 'Breakthrough', description: 'Win Mode 2 after personally destroying the enemy command station.', target: 1 },
+  { id: 'last-line-of-defense', name: 'Last Line of Defense', description: 'Win Mode 2 with your command station at 25% HP or less.', target: 1 },
+  { id: 'convoy-escort', name: 'Convoy Escort', description: 'Win Mode 3 as transporter with the semi-truck at 50% HP or more.', target: 1 },
+  { id: 'convoy-hunter', name: 'Convoy Hunter', description: 'As a Mode 3 attacker, personally destroy the convoy semi-truck.', target: 1 },
+  { id: 'beachhead', name: 'Beachhead', description: 'Deploy from the ferry in a land vehicle, survive, and win Mode 4.', target: 1 },
+  { id: 'hold-the-shore', name: 'Hold the Shore', description: 'Win Mode 4 as protector with the command station at 25% HP or less.', target: 1 },
+  { id: 'solo-fighter', name: 'Solo Fighter', description: 'Win Mode 1, 2, or 4 after standing alone against at least 6 combat members.', target: 1 },
+];
+
+function readUnlockedAchievements(): StoredAchievementState {
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY_ACHIEVEMENTS) || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+export function computeAchievementProgress(records: GameRecord[]): AchievementProgress[] {
+  const real = realRecords(records);
+  const priorUnlocks = readUnlockedAchievements();
+  const victories = real.filter(r => r.result === 'victory');
+  const winsByDomain = (domain: VehicleDomain) => victories.filter(r => r.vehicle.domain === domain).length;
+  const landWins = winsByDomain('land');
+  const airWins = winsByDomain('air');
+  const waterWins = winsByDomain('water');
+  const maxKills = (domain: VehicleDomain, aircraftOnly = false) => Math.max(0, ...real
+    .filter(r => !aircraftOnly || r.vehicle.domain === 'air')
+    .map(r => r.performance.killsByDomain?.[domain] || 0));
+  const values: Record<AchievementId, number> = {
+    'first-victory': Math.min(1, victories.length),
+    veteran: Math.min(25, real.length),
+    untouchable: real.some(r => r.result === 'victory' && r.vehicle.survived && r.vehicle.finalHp / Math.max(1, r.vehicle.maxHp) >= 0.75) ? 1 : 0,
+    ace: Math.min(5, maxKills('air', true)),
+    'tank-hunter': Math.min(5, maxKills('land')),
+    'fleet-hunter': Math.min(4, maxKills('water')),
+    'combined-arms': Math.min(5, landWins) + Math.min(5, airWins) + Math.min(5, waterWins),
+    breakthrough: real.some(r => r.result === 'victory' && r.settings.gameMode === 'command-station' && r.mission?.playerFinalBlowCommandStation) ? 1 : 0,
+    'last-line-of-defense': real.some(r => r.result === 'victory' && r.settings.gameMode === 'command-station' && (r.mission?.friendlyCommandStationHpPercent ?? 101) <= 25) ? 1 : 0,
+    'convoy-escort': real.some(r => r.result === 'victory' && r.settings.gameMode === 'transport-protection' && r.playerRole === 'defender' && r.mission?.convoyExtracted && (r.mission.convoyHpPercent ?? 0) >= 50) ? 1 : 0,
+    'convoy-hunter': real.some(r => r.result === 'victory' && r.settings.gameMode === 'transport-protection' && r.playerRole === 'attacker' && r.mission?.playerFinalBlowConvoy) ? 1 : 0,
+    beachhead: real.some(r => r.result === 'victory' && r.settings.gameMode === 'amphibious-assault' && r.playerRole === 'attacker' && r.vehicle.domain === 'land' && r.vehicle.survived && r.mission?.playerDeployedFromFerry) ? 1 : 0,
+    'hold-the-shore': real.some(r => r.result === 'victory' && r.settings.gameMode === 'amphibious-assault' && r.playerRole === 'defender' && (r.mission?.friendlyCommandStationHpPercent ?? 101) <= 25) ? 1 : 0,
+    'solo-fighter': real.some(r => r.result === 'victory' && ['fleet-battle', 'command-station', 'amphibious-assault'].includes(r.settings.gameMode) && r.mission?.soloFighterQualified) ? 1 : 0,
+  };
+
+  return ACHIEVEMENTS.map(definition => {
+    const rawProgress = values[definition.id];
+    const newlyUnlocked = rawProgress >= definition.target;
+    const unlockedAt = priorUnlocks[definition.id] || (newlyUnlocked ? Date.now() : undefined);
+    const progress = unlockedAt ? definition.target : rawProgress;
+    const progressLabel = definition.id === 'combined-arms'
+      ? `Land ${Math.min(5, landWins)}/5 · Air ${Math.min(5, airWins)}/5 · Water ${Math.min(5, waterWins)}/5`
+      : `${progress}/${definition.target}`;
+    return { ...definition, progress, unlocked: !!unlockedAt, unlockedAt, progressLabel };
+  });
+}
+
+function persistCareerAndAchievements(records: GameRecord[]): void {
+  try {
+    const career = computeCareerStatistics(records);
+    localStorage.setItem(STORAGE_KEY_CAREER, JSON.stringify(career));
+    const unlocks = readUnlockedAchievements();
+    for (const achievement of computeAchievementProgress(records)) {
+      if (achievement.unlocked && achievement.unlockedAt) unlocks[achievement.id] = achievement.unlockedAt;
+    }
+    localStorage.setItem(STORAGE_KEY_ACHIEVEMENTS, JSON.stringify(unlocks));
+  } catch (err) {
+    console.warn('Failed to persist career progression:', err);
+  }
+}
+
+export function getCareerStatistics(): CareerStatistics {
+  const computed = computeCareerStatistics(getGameHistory());
+  try {
+    localStorage.setItem(STORAGE_KEY_CAREER, JSON.stringify(computed));
+  } catch {
+    // The live computed snapshot remains available even if storage is unavailable.
+  }
+  return computed;
+}
+
+export function getAchievementProgress(): AchievementProgress[] {
+  const achievements = computeAchievementProgress(getGameHistory());
+  try {
+    const unlocks = readUnlockedAchievements();
+    for (const achievement of achievements) {
+      if (achievement.unlocked && achievement.unlockedAt) unlocks[achievement.id] = achievement.unlockedAt;
+    }
+    localStorage.setItem(STORAGE_KEY_ACHIEVEMENTS, JSON.stringify(unlocks));
+  } catch {
+    // Return calculated progress when persistence is unavailable.
+  }
+  return achievements;
 }

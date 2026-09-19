@@ -659,6 +659,9 @@ export interface GameRecord {
   result: 'victory' | 'defeat';
   winReason?: 'annihilation' | 'area_control' | string;
   durationSeconds: number;
+  playerTeam?: Team;
+  playerRole?: PlayerMissionRole;
+  isSample?: boolean;
 
   // Vehicle information
   vehicle: {
@@ -705,6 +708,20 @@ export interface GameRecord {
     damageTaken?: number;
     score: number;
     grade: 'S' | 'A' | 'B' | 'C' | 'D';
+    killsByDomain?: Record<VehicleDomain, number>;
+  };
+
+  mission?: {
+    summary: string;
+    playerFinalBlowCommandStation?: boolean;
+    playerFinalBlowConvoy?: boolean;
+    playerDeployedFromFerry?: boolean;
+    soloFighterQualified?: boolean;
+    friendlyCommandStationHpPercent?: number;
+    enemyCommandStationDestroyed?: boolean;
+    convoyExtracted?: boolean;
+    convoyDestroyed?: boolean;
+    convoyHpPercent?: number;
   };
 
   // Fleet outcome summary
@@ -732,5 +749,32 @@ export interface GameHistorySummary {
   favoriteVehicleName?: string;
   favoriteDomain?: VehicleDomain;
   mostPlayedMapName?: string;
+}
+
+export type AchievementId =
+  | 'first-victory'
+  | 'veteran'
+  | 'untouchable'
+  | 'ace'
+  | 'tank-hunter'
+  | 'fleet-hunter'
+  | 'combined-arms'
+  | 'breakthrough'
+  | 'last-line-of-defense'
+  | 'convoy-escort'
+  | 'convoy-hunter'
+  | 'beachhead'
+  | 'hold-the-shore'
+  | 'solo-fighter';
+
+export interface AchievementProgress {
+  id: AchievementId;
+  name: string;
+  description: string;
+  unlocked: boolean;
+  unlockedAt?: number;
+  progress: number;
+  target: number;
+  progressLabel?: string;
 }
 

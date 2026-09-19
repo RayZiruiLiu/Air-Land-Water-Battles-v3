@@ -8,13 +8,14 @@ import { BattleSettings, CustomShipConfig } from './types/ship';
 import { SHIP_PRESETS } from './utils/shipStats';
 import { ShipyardView } from './components/ShipyardView';
 import { BattleView } from './components/BattleView';
+import { HistoryAchievementsView } from './components/HistoryAchievementsView';
 import { sounds } from './audio/soundEffects';
 
 const STORAGE_KEY_CONFIG = 'naval_architect_custom_ship';
 const STORAGE_KEY_SETTINGS = 'naval_architect_settings';
 
 export default function App() {
-  const [view, setView] = useState<'shipyard' | 'battle'>('shipyard');
+  const [view, setView] = useState<'shipyard' | 'battle' | 'history'>('shipyard');
 
   // Load custom ship from localStorage or default to Broadside Sovereign
   const [playerConfig, setPlayerConfig] = useState<CustomShipConfig>(() => {
@@ -109,14 +110,17 @@ export default function App() {
           onLaunchBattle={handleLaunchBattle}
           soundEnabled={settings.soundEnabled}
           onToggleSound={handleToggleSound}
+          onOpenHistory={() => setView('history')}
         />
-      ) : (
+      ) : view === 'battle' ? (
         <BattleView
           playerConfig={playerConfig}
           settings={settings}
           onUpdateSettings={handleUpdateSettings}
           onReturnToShipyard={handleReturnToShipyard}
         />
+      ) : (
+        <HistoryAchievementsView onBack={handleReturnToShipyard} />
       )}
     </div>
   );

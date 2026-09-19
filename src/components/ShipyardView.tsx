@@ -34,7 +34,8 @@ import {
   Plane,
   Anchor,
   Target,
-  Navigation
+  Navigation,
+  History
 } from 'lucide-react';
 import { sounds } from '../audio/soundEffects';
 
@@ -52,6 +53,7 @@ interface ShipyardViewProps {
   onLaunchBattle: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  onOpenHistory: () => void;
 }
 
 export const ShipyardView: React.FC<ShipyardViewProps> = ({
@@ -68,6 +70,7 @@ export const ShipyardView: React.FC<ShipyardViewProps> = ({
   onLaunchBattle,
   soundEnabled,
   onToggleSound,
+  onOpenHistory,
 }) => {
   const currentModel = SHIP_MODEL_MAP.get(playerConfig.baseModelId) || BASE_SHIPS[0];
   const [selectedHardpointId, setSelectedHardpointId] = useState<string | null>(
@@ -231,6 +234,14 @@ export const ShipyardView: React.FC<ShipyardViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={onOpenHistory}
+              className="px-3 py-2 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition flex items-center gap-1.5 text-xs font-semibold shadow-sm cursor-pointer"
+              title="Open battle history, career statistics, and achievements"
+            >
+              <History className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">History & Achievements</span>
+            </button>
             {/* Saved Vehicles Garage Button */}
             <button
               onClick={() => setIsSavedFleetModalOpen(true)}
